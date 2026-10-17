@@ -9,6 +9,7 @@ from ssr_knowledge.contracts import ContractError, read_json, validate
 from ssr_knowledge.store import LocalKnowledgeStore
 from ssr_knowledge.workflows import (
     prepare_gap_supplement,
+    prepare_gap_research,
     prepare_prebuild,
     query_published,
     review_candidate,
@@ -44,6 +45,8 @@ class KnowledgeWorkflowTests(unittest.TestCase):
         self.assertEqual(reviewed["status"], "approved")
         published = self.store.publish(candidate["candidate_id"], "v0.1.0")
         self.assertEqual(published["version"], "v0.1.0")
+        self.assertEqual(published["publication_status"], "published")
+        self.assertEqual(len(published["records_sha256"]), 64)
         result = query_published("v0.1.0", "game_item", "\u661f\u7802", self.store)
         self.assertEqual(result["status"], "ok")
         self.assertEqual(set(result), {"status", "materials", "sources"})
@@ -53,14 +56,23 @@ class KnowledgeWorkflowTests(unittest.TestCase):
     def test_gap_supplement_is_a_separate_candidate_and_requires_review(self) -> None:
         gaps = read_json(FIXTURES / "gap-export.json")
         records = read_json(FIXTURES / "gap-records.json")
-        candidate = prepare_gap_supplement(gaps, records, self.store)
+        packet = prepare_gap_research(gaps, records, self.store)
+        self.assertEqual(packet["status"], "complete")
+        self.assertEqual(packet["gaps"][0]["run_id"], gaps["gaps"][0]["run_id"])
+        self.assertEqual(packet["records"][0]["gap_id"], gaps["gaps"][0]["gap_id"])
+        self.assertTrue(self.store.research_path(packet["research_id"]).exists())
+        self.assertFalse(self.store.candidate_dir.exists())
+
+        reloaded_store = LocalKnowledgeStore(self.temp.name)
+        candidate = prepare_gap_supplement(packet["research_id"], reloaded_store)
         self.assertEqual(candidate["origin"], "gap_supplement")
         self.assertEqual(candidate["status"], "pending_review")
+        self.assertEqual(candidate["research_id"], packet["research_id"])
         self.assertEqual(candidate["records"][0]["gap_id"], gaps["gaps"][0]["gap_id"])
 
         incomplete = {"records": []}
         with self.assertRaisesRegex(ContractError, "cover each imported gap"):
-            prepare_gap_supplement(gaps, incomplete, self.store)
+            prepare_gap_research(gaps, incomplete, self.store)
 
         review_candidate(candidate["candidate_id"], "approve", "human", "source checked", self.store)
         self.store.publish(candidate["candidate_id"], "v0.2.0")
@@ -71,6 +83,7 @@ class KnowledgeWorkflowTests(unittest.TestCase):
         validate(read_json(FIXTURES / "prebuild-source.json"), "prebuild-source.schema.json")
         validate(read_json(FIXTURES / "gap-export.json"), "gap-export.schema.json")
         validate(read_json(FIXTURES / "gap-records.json"), "supplement-records.schema.json")
+        validate(read_json(FIXTURES / "research-packet.json"), "research-packet.schema.json")
         tools = read_json(FIXTURES / "tool-config.json")
         validate(tools, "tool-config.schema.json")
         self.assertEqual(tools["mode"], "fixture_only")
@@ -94,6 +107,26 @@ class KnowledgeWorkflowTests(unittest.TestCase):
         review_candidate(second["candidate_id"], "approve", "human", "ok", self.store)
         with self.assertRaisesRegex(ContractError, "already exists"):
             self.store.publish(second["candidate_id"], "v0.1.0")
+
+    def test_published_records_digest_rejects_tampering(self) -> None:
+        candidate = prepare_prebuild(read_json(FIXTURES / "prebuild-source.json"), self.store)
+        review_candidate(candidate["candidate_id"], "approve", "human", "ok", self.store)
+        self.store.publish(candidate["candidate_id"], "v0.3.0")
+        bundle_path = self.store.published_dir / "v0.3.0.json"
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        bundle["records"][0]["summary"] += " altered"
+        bundle_path.write_text(json.dumps(bundle, ensure_ascii=False), encoding="utf-8")
+
+        with self.assertRaisesRegex(ContractError, "digest mismatch"):
+            self.store.read_published("v0.3.0")
+
+    def test_blank_research_evidence_is_rejected(self) -> None:
+        gaps = read_json(FIXTURES / "gap-export.json")
+        records = read_json(FIXTURES / "gap-records.json")
+        records["records"][0]["summary"] = "  "
+
+        with self.assertRaisesRegex(ContractError, "summary must not be empty"):
+            prepare_gap_research(gaps, records, self.store)
 
 
 if __name__ == "__main__":

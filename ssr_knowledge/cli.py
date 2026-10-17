@@ -7,7 +7,7 @@ from typing import Any
 
 from .contracts import read_json, validate
 from .store import LocalKnowledgeStore
-from .workflows import prepare_gap_supplement, prepare_prebuild, query_published, review_candidate
+from .workflows import prepare_gap_research, prepare_gap_supplement, prepare_prebuild, query_published, review_candidate
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,9 +25,13 @@ def build_parser() -> argparse.ArgumentParser:
     prebuild.add_argument("--source", required=True)
     prebuild.add_argument("--state-dir", default=".local-state")
 
-    supplement = commands.add_parser("supplement", help="import question gaps and researched sourced records")
-    supplement.add_argument("--gaps", required=True)
-    supplement.add_argument("--records", required=True)
+    research = commands.add_parser("research", help="save a complete offline research packet from gaps and sourced records")
+    research.add_argument("--gaps", required=True)
+    research.add_argument("--records", required=True)
+    research.add_argument("--state-dir", default=".local-state")
+
+    supplement = commands.add_parser("supplement", help="create a pending candidate from a saved research packet")
+    supplement.add_argument("--research-id", required=True)
     supplement.add_argument("--state-dir", default=".local-state")
 
     review = commands.add_parser("review", help="record a human candidate review")
@@ -58,8 +62,10 @@ def main() -> None:
     store = LocalKnowledgeStore(getattr(args, "state_dir", ".local-state"))
     if args.command == "prebuild":
         result = prepare_prebuild(read_json(args.source), store)
+    elif args.command == "research":
+        result = prepare_gap_research(read_json(args.gaps), read_json(args.records), store)
     elif args.command == "supplement":
-        result = prepare_gap_supplement(read_json(args.gaps), read_json(args.records), store)
+        result = prepare_gap_supplement(args.research_id, store)
     elif args.command == "review":
         result = review_candidate(args.candidate_id, args.decision, args.reviewer, args.note, store)
     elif args.command == "publish":

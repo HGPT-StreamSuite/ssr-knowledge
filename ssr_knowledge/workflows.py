@@ -7,13 +7,16 @@ from .contracts import ContractError, validate
 from .store import LocalKnowledgeStore, utc_now
 
 
-def _candidate(origin: str, source_reference: str, records: list[dict[str, Any]]) -> dict[str, Any]:
+def _candidate(
+    origin: str, source_reference: str, records: list[dict[str, Any]], research_id: str | None = None
+) -> dict[str, Any]:
     candidate = {
         "candidate_id": f"candidate-{uuid4().hex}",
         "origin": origin,
         "status": "pending_review",
         "created_at": utc_now(),
         "source_reference": source_reference,
+        "research_id": research_id,
         "records": records,
         "review": None,
     }
@@ -28,11 +31,13 @@ def prepare_prebuild(source: dict[str, Any], store: LocalKnowledgeStore) -> dict
     return candidate
 
 
-def prepare_gap_supplement(
+def prepare_gap_research(
     gaps: dict[str, Any], supplied_records: dict[str, Any], store: LocalKnowledgeStore
 ) -> dict[str, Any]:
     validate(gaps, "gap-export.schema.json")
     validate(supplied_records, "supplement-records.schema.json")
+    if not gaps["gaps"]:
+        raise ContractError("research packet requires at least one imported gap")
     known_gap_ids = {gap["gap_id"] for gap in gaps["gaps"]}
     covered_gap_ids = {record.get("gap_id") for record in supplied_records["records"]}
     if known_gap_ids != covered_gap_ids:
@@ -40,7 +45,23 @@ def prepare_gap_supplement(
     purpose_by_gap = {gap["gap_id"]: gap["purpose"] for gap in gaps["gaps"]}
     if any(record["kind"] != purpose_by_gap[record["gap_id"]] for record in supplied_records["records"]):
         raise ContractError("supplement record kind must match the imported gap purpose")
-    candidate = _candidate("gap_supplement", gaps["export_id"], supplied_records["records"])
+    packet = {
+        "research_id": f"research-{uuid4().hex}",
+        "export_id": gaps["export_id"],
+        "status": "complete",
+        "created_at": utc_now(),
+        "gaps": gaps["gaps"],
+        "records": supplied_records["records"],
+    }
+    store.save_research_packet(packet)
+    return packet
+
+
+def prepare_gap_supplement(research_id: str, store: LocalKnowledgeStore) -> dict[str, Any]:
+    packet = store.load_research_packet(research_id)
+    candidate = _candidate(
+        "gap_supplement", research_id, packet["records"], research_id=research_id
+    )
     store.save_candidate(candidate)
     return candidate
 

@@ -2,13 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Knowledge candidate",
   "type": "object",
-  "required": ["candidate_id", "origin", "status", "created_at", "source_reference", "records"],
+  "required": ["candidate_id", "origin", "status", "created_at", "source_reference", "research_id", "records"],
   "properties": {
     "candidate_id": {"type": "string"},
     "origin": {"type": "string", "enum": ["prebuild", "gap_supplement"]},
     "status": {"type": "string", "enum": ["pending_review", "approved", "rejected", "published"]},
     "created_at": {"type": "string"},
     "source_reference": {"type": "string"},
+    "research_id": {"type": ["string", "null"]},
     "records": {"type": "array", "items": {"type": "object"}},
     "review": {
       "type": ["object", "null"],

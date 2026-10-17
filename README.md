@@ -5,10 +5,10 @@
 ## Three independent workflows
 
 1. **Prebuild:** normalize a local source bundle into a candidate. Candidates require review before they can be published. The prebuild review policy is still a product decision; this repo uses manual review as a conservative local default.
-2. **Gap supplementation:** import exported question gaps and separately supplied researched records. Every gap must be covered by at least one record with a source. The candidate cannot be published until a human approves it.
+2. **Gap research and supplementation:** import an exported gap and its separately prepared, sourced records into a durable research packet. The packet preserves each `gap_id`, `run_id`, and `message_id`. Only a later `supplement` command turns that packet into a candidate, and the candidate cannot be published until a human approves it.
 3. **Fixed tool preparation:** inspect a local, fixture-only list of planned tool adapters. No tool is executed, configured with credentials, or connected to a service.
 
-Candidates and published versions are stored separately. Publishing creates an immutable versioned JSON bundle; `query` requires an explicit version and reads only published bundles. There is no shared database or implicit `latest` pointer. The exact version exchange format between future systems is still undecided.
+Research packets, candidates, and published versions are stored separately. Publishing creates an immutable versioned JSON bundle with a SHA-256 digest over canonicalized records; every read rechecks the digest and rejects tampered content. `query` requires an explicit version and reads only published bundles. There is no shared database or implicit `latest` pointer. The exact version exchange format between future systems is still undecided.
 
 ## Run locally
 
@@ -29,14 +29,15 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge publish --candida
 uv --cache-dir .uv-cache --offline run python -m ssr_knowledge query --version v0.1.0 --kind game_item --text "星砂"
 ```
 
-Supplementation takes a gap export and human-prepared sourced records:
+Save the offline research packet first, then create a candidate from its persisted ID. These commands do not perform web research; the supplied evidence is local input and must be reviewed before publication:
 
 ```powershell
-uv --cache-dir .uv-cache --offline run python -m ssr_knowledge supplement --gaps fixtures/gap-export.json --records fixtures/gap-records.json --state-dir .local-state
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge research --gaps fixtures/gap-export.json --records fixtures/gap-records.json --state-dir .local-state
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge supplement --research-id RESEARCH_ID --state-dir .local-state
 ```
 
 ## Local contracts and boundaries
 
-`contracts/` contains this repo's own JSON Schemas. The standard-library validator checks local fixtures and user-supplied documents against those schemas. Query responses contain only `status`, `materials`, `sources`, and the requested `version`; operational diagnostics stay in the local audit log.
+`contracts/` contains this repo's own JSON Schemas, including `research-packet.schema.json`. The standard-library validator checks local fixtures and user-supplied documents against those schemas. Query responses contain only `status`, `materials`, and `sources`; operational diagnostics stay in the local audit log.
 
-No web research, platform connection, model call, deployment, or remote persistence is implemented. Research inputs in fixtures are fictional. A person must inspect candidate content and explicitly approve it before publication; the exact review UI and prebuild policy remain undecided.
+No web research, platform connection, model call, deployment, or remote persistence is implemented. Research inputs in fixtures are fictional. A person must inspect candidate content and explicitly approve it before publication; the exact review UI and whether prebuild candidates also require human review remain undecided.

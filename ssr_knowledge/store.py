@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from datetime import datetime, timezone
@@ -14,11 +15,27 @@ VERSION_PATTERN = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 def _validate_records(records: list[dict[str, Any]]) -> None:
+    if not isinstance(records, list) or not records:
+        raise ContractError("at least one knowledge record is required")
     for index, record in enumerate(records):
         try:
             validate(record, "record.schema.json")
         except ContractError as exc:
             raise ContractError(f"records[{index}]: {exc}") from exc
+        for field in ("record_id", "topic", "summary"):
+            if not isinstance(record.get(field), str) or not record[field].strip():
+                raise ContractError(f"records[{index}].{field} must not be empty")
+        source = record.get("source", {})
+        for field in ("source_id", "source_type", "title", "locator", "accessed_at"):
+            if not isinstance(source.get(field), str) or not source[field].strip():
+                raise ContractError(f"records[{index}].source.{field} must not be empty")
+
+
+def _records_digest(records: list[dict[str, Any]]) -> str:
+    canonical = json.dumps(
+        records, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def utc_now() -> str:
@@ -38,6 +55,7 @@ class LocalKnowledgeStore:
     def __init__(self, state_dir: str | Path) -> None:
         self.root = Path(state_dir)
         self.candidate_dir = self.root / "candidates"
+        self.research_dir = self.root / "research"
         self.published_dir = self.root / "published"
         self.audit_path = self.root / "audit.jsonl"
 
@@ -50,6 +68,49 @@ class LocalKnowledgeStore:
         if not ID_PATTERN.fullmatch(candidate_id):
             raise ContractError("invalid candidate ID")
         return self.candidate_dir / f"{candidate_id}.json"
+
+    def research_path(self, research_id: str) -> Path:
+        if not ID_PATTERN.fullmatch(research_id):
+            raise ContractError("invalid research ID")
+        return self.research_dir / f"{research_id}.json"
+
+    def save_research_packet(self, packet: dict[str, Any]) -> None:
+        validate(packet, "research-packet.schema.json")
+        if not packet["gaps"]:
+            raise ContractError("research packet must include at least one gap")
+        _validate_records(packet["records"])
+        gap_ids = {gap["gap_id"] for gap in packet["gaps"]}
+        if len(gap_ids) != len(packet["gaps"]):
+            raise ContractError("research packet gap IDs must be unique")
+        if {record.get("gap_id") for record in packet["records"]} != gap_ids:
+            raise ContractError("research records must cover exactly the packet gaps")
+        purpose_by_gap = {gap["gap_id"]: gap["purpose"] for gap in packet["gaps"]}
+        if any(record["kind"] != purpose_by_gap[record["gap_id"]] for record in packet["records"]):
+            raise ContractError("research record kind must match its gap purpose")
+        path = self.research_path(packet["research_id"])
+        if path.exists():
+            raise ContractError("research packet already exists")
+        _write_json(path, packet)
+        self._audit({"event": "research_packet_created", "research_id": packet["research_id"], "at": utc_now()})
+
+    def load_research_packet(self, research_id: str) -> dict[str, Any]:
+        path = self.research_path(research_id)
+        if not path.exists():
+            raise ContractError("research packet not found")
+        packet = json.loads(path.read_text(encoding="utf-8"))
+        validate(packet, "research-packet.schema.json")
+        if not packet["gaps"]:
+            raise ContractError("research packet must include at least one gap")
+        _validate_records(packet["records"])
+        gap_ids = {gap["gap_id"] for gap in packet["gaps"]}
+        if len(gap_ids) != len(packet["gaps"]):
+            raise ContractError("research packet gap IDs must be unique")
+        if {record.get("gap_id") for record in packet["records"]} != gap_ids:
+            raise ContractError("research records must cover exactly the packet gaps")
+        purpose_by_gap = {gap["gap_id"]: gap["purpose"] for gap in packet["gaps"]}
+        if any(record["kind"] != purpose_by_gap[record["gap_id"]] for record in packet["records"]):
+            raise ContractError("research record kind must match its gap purpose")
+        return packet
 
     def save_candidate(self, candidate: dict[str, Any]) -> None:
         validate(candidate, "candidate.schema.json")
@@ -85,10 +146,12 @@ class LocalKnowledgeStore:
         if target.exists():
             raise ContractError("published version already exists")
         bundle = {
+            "publication_status": "published",
             "version": version,
             "candidate_id": candidate_id,
             "published_at": utc_now(),
             "records": candidate["records"],
+            "records_sha256": _records_digest(candidate["records"]),
         }
         validate(bundle, "published-bundle.schema.json")
         _validate_records(bundle["records"])
@@ -106,4 +169,6 @@ class LocalKnowledgeStore:
         bundle = json.loads(path.read_text(encoding="utf-8"))
         validate(bundle, "published-bundle.schema.json")
         _validate_records(bundle["records"])
+        if bundle["records_sha256"] != _records_digest(bundle["records"]):
+            raise ContractError("published bundle records digest mismatch")
         return bundle

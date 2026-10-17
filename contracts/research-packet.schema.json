@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Completed offline knowledge research packet",
+  "type": "object",
+  "required": ["research_id", "export_id", "status", "created_at", "gaps", "records"],
+  "properties": {
+    "research_id": {"type": "string"},
+    "export_id": {"type": "string"},
+    "status": {"type": "string", "enum": ["complete"]},
+    "created_at": {"type": "string"},
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gap_id", "run_id", "message_id", "purpose", "question", "reason"],
+        "properties": {
+          "gap_id": {"type": "string"}, "run_id": {"type": "string"},
+          "message_id": {"type": "string"},
+          "purpose": {"type": "string", "enum": ["person", "game_info", "game_guide", "game_item"]},
+          "question": {"type": "string"}, "reason": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["record_id", "kind", "topic", "summary", "tags", "gap_id", "source"],
+        "properties": {
+          "record_id": {"type": "string"},
+          "kind": {"type": "string", "enum": ["person", "game_info", "game_guide", "game_item"]},
+          "topic": {"type": "string"}, "summary": {"type": "string"},
+          "tags": {"type": "array", "items": {"type": "string"}}, "gap_id": {"type": "string"},
+          "source": {
+            "type": "object",
+            "required": ["source_id", "source_type", "title", "locator", "accessed_at"],
+            "properties": {
+              "source_id": {"type": "string"}, "source_type": {"type": "string"},
+              "title": {"type": "string"}, "locator": {"type": "string"}, "accessed_at": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
