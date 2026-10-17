@@ -57,6 +57,7 @@ class LocalKnowledgeStore:
         self.candidate_dir = self.root / "candidates"
         self.research_dir = self.root / "research"
         self.published_dir = self.root / "published"
+        self.tool_config_dir = self.root / "tool-configs"
         self.audit_path = self.root / "audit.jsonl"
 
     def _audit(self, record: dict[str, Any]) -> None:
@@ -73,6 +74,44 @@ class LocalKnowledgeStore:
         if not ID_PATTERN.fullmatch(research_id):
             raise ContractError("invalid research ID")
         return self.research_dir / f"{research_id}.json"
+
+    def tool_config_path(self, version: str) -> Path:
+        if not VERSION_PATTERN.fullmatch(version):
+            raise ContractError("tool config version must look like v1.2.3")
+        return self.tool_config_dir / f"{version}.json"
+
+    @staticmethod
+    def validate_tool_config(config: dict[str, Any]) -> None:
+        validate(config, "tool-config.schema.json")
+        if not config["tools"]:
+            raise ContractError("tool config must include at least one adapter")
+        names = [tool["name"] for tool in config["tools"]]
+        if len(names) != len(set(names)):
+            raise ContractError("tool config adapter names must be unique")
+        for tool in config["tools"]:
+            parameter_names = [parameter["name"] for parameter in tool["parameters"]]
+            if len(parameter_names) != len(set(parameter_names)):
+                raise ContractError(f"tool config parameters must be unique: {tool['name']}")
+
+    def save_tool_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        self.validate_tool_config(config)
+        version = config["config_version"]
+        path = self.tool_config_path(version)
+        if path.exists():
+            raise ContractError("tool config version already exists")
+        _write_json(path, config)
+        self._audit({"event": "tool_config_saved", "version": version, "at": utc_now()})
+        return config
+
+    def load_tool_config(self, version: str) -> dict[str, Any]:
+        path = self.tool_config_path(version)
+        if not path.exists():
+            raise ContractError("tool config version not found")
+        config = json.loads(path.read_text(encoding="utf-8"))
+        self.validate_tool_config(config)
+        if config["config_version"] != version:
+            raise ContractError("tool config file version does not match requested version")
+        return config
 
     def save_research_packet(self, packet: dict[str, Any]) -> None:
         validate(packet, "research-packet.schema.json")

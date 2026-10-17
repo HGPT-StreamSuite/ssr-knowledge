@@ -6,7 +6,7 @@
 
 1. **Prebuild:** normalize a local source bundle into a candidate. Candidates require review before they can be published. The prebuild review policy is still a product decision; this repo uses manual review as a conservative local default.
 2. **Gap research and supplementation:** import an exported gap and its separately prepared, sourced records into a durable research packet. The packet preserves each `gap_id`, `run_id`, and `message_id`. Only a later `supplement` command turns that packet into a candidate, and the candidate cannot be published until a human approves it.
-3. **Fixed tool preparation:** inspect a local, fixture-only list of planned tool adapters. No tool is executed, configured with credentials, or connected to a service.
+3. **Fixed tool preparation:** validate and optionally persist an immutable, versioned local manifest of adapter kinds, interface versions, parameters, and outputs. Providers remain undecided, network access is disabled, and no adapter is executed or connected.
 
 Research packets, candidates, and published versions are stored separately. Publishing creates an immutable versioned JSON bundle with a SHA-256 digest over canonicalized records; every read rechecks the digest and rejects tampered content. `query` requires an explicit version and reads only published bundles. There is no shared database or implicit `latest` pointer. The exact version exchange format between future systems is still undecided.
 
@@ -18,6 +18,8 @@ This repo uses Python 3.11+ and the standard library only. `uv.lock` records the
 uv --cache-dir .uv-cache --offline lock
 uv --cache-dir .uv-cache --offline run python -m ssr_knowledge prebuild --source fixtures/prebuild-source.json --state-dir .local-state
 uv --cache-dir .uv-cache --offline run python -m ssr_knowledge tools
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge tools --save --state-dir .local-state
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge tools --version v1.0.0 --state-dir .local-state
 uv --cache-dir .uv-cache --offline run python -m unittest discover -s tests -v
 ```
 
@@ -39,5 +41,7 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge supplement --rese
 ## Local contracts and boundaries
 
 `contracts/` contains this repo's own JSON Schemas, including `research-packet.schema.json`. The standard-library validator checks local fixtures and user-supplied documents against those schemas. Query responses contain only `status`, `materials`, and `sources`; operational diagnostics stay in the local audit log.
+
+The `tools --save` command writes an immutable, versioned manifest under `tool-configs/`; `tools --version v1.0.0` reloads it. The manifest describes adapter kind, provider decision state, interface version, parameters, and outputs. It enforces `network_enabled=false`; it does not configure credentials or connect an adapter.
 
 No web research, platform connection, model call, deployment, or remote persistence is implemented. Research inputs in fixtures are fictional. A person must inspect candidate content and explicitly approve it before publication; the exact review UI and whether prebuild candidates also require human review remain undecided.

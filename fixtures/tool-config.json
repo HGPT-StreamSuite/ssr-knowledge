@@ -1,15 +1,54 @@
 {
-  "mode": "fixture_only",
+  "config_version": "v1.0.0",
+  "mode": "documented_not_connected",
+  "network_enabled": false,
   "tools": [
     {
       "name": "wiki_reader",
+      "adapter_kind": "source",
       "state": "documented_not_connected",
-      "input_contract": "kind + query text -> materials, sources, and status"
+      "provider_status": "undecided",
+      "interface_version": "query-v1",
+      "parameters": [
+        {"name": "kind", "type": "string", "required": true},
+        {"name": "query", "type": "string", "required": true}
+      ],
+      "outputs": ["status", "materials", "sources"]
+    },
+    {
+      "name": "http_api_adapter_template",
+      "adapter_kind": "http_api",
+      "state": "documented_not_connected",
+      "provider_status": "undecided",
+      "interface_version": "http-adapter-v1",
+      "parameters": [
+        {"name": "request", "type": "object", "required": true}
+      ],
+      "outputs": ["status", "materials", "sources"]
+    },
+    {
+      "name": "mcp_adapter_template",
+      "adapter_kind": "mcp",
+      "state": "documented_not_connected",
+      "provider_status": "undecided",
+      "interface_version": "mcp-adapter-v1",
+      "parameters": [
+        {"name": "tool_name", "type": "string", "required": true},
+        {"name": "arguments", "type": "object", "required": true}
+      ],
+      "outputs": ["status", "materials", "sources"]
     },
     {
       "name": "research_source_import",
+      "adapter_kind": "manual_import",
       "state": "documented_not_connected",
-      "input_contract": "human supplied sourced records -> pending candidate"
+      "provider_status": "undecided",
+      "interface_version": "research-packet-v1",
+      "parameters": [
+        {"name": "gap_export", "type": "object", "required": true},
+        {"name": "sourced_records", "type": "array", "required": true}
+      ],
+      "outputs": ["research_id", "status"]
     }
   ]
 }

@@ -52,8 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--text", default="")
     query.add_argument("--state-dir", default=".local-state")
 
-    tools = commands.add_parser("tools", help="inspect fixed local tool-preparation settings")
+    tools = commands.add_parser("tools", help="validate, save, or read local versioned adapter manifests")
     tools.add_argument("--config", default=str(ROOT / "fixtures" / "tool-config.json"))
+    tool_action = tools.add_mutually_exclusive_group()
+    tool_action.add_argument("--save", action="store_true", help="save the config as a new immutable local version")
+    tool_action.add_argument("--version", help="read a saved local tool config version")
+    tools.add_argument("--state-dir", default=".local-state")
     return parser
 
 
@@ -73,8 +77,16 @@ def main() -> None:
     elif args.command == "query":
         result = query_published(args.version, args.kind, args.text, store)
     else:
-        result = read_json(args.config)
-        validate(result, "tool-config.schema.json")
+        if args.version:
+            result = store.load_tool_config(args.version)
+        else:
+            config = read_json(args.config)
+            store.validate_tool_config(config)
+            result = (
+                {"state": "saved", "config": store.save_tool_config(config)}
+                if args.save
+                else config
+            )
     _print(result)
 
 

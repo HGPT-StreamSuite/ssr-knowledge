@@ -86,8 +86,19 @@ class KnowledgeWorkflowTests(unittest.TestCase):
         validate(read_json(FIXTURES / "research-packet.json"), "research-packet.schema.json")
         tools = read_json(FIXTURES / "tool-config.json")
         validate(tools, "tool-config.schema.json")
-        self.assertEqual(tools["mode"], "fixture_only")
+        self.assertEqual(tools["mode"], "documented_not_connected")
+        self.assertFalse(tools["network_enabled"])
         self.assertTrue(all(item["state"] == "documented_not_connected" for item in tools["tools"]))
+        self.assertEqual(
+            {tool["adapter_kind"] for tool in tools["tools"]},
+            {"source", "http_api", "mcp", "manual_import"},
+        )
+
+        saved = self.store.save_tool_config(tools)
+        reloaded_store = LocalKnowledgeStore(self.temp.name)
+        self.assertEqual(reloaded_store.load_tool_config("v1.0.0"), saved)
+        with self.assertRaisesRegex(ContractError, "already exists"):
+            self.store.save_tool_config(tools)
 
         invalid = json.loads(json.dumps(read_json(FIXTURES / "gap-export.json")))
         invalid["gaps"][0].pop("message_id")
