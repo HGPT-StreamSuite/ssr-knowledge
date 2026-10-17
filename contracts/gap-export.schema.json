@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Question gap export",
+  "type": "object",
+  "required": ["export_id", "gaps"],
+  "properties": {
+    "export_id": {"type": "string"},
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gap_id", "run_id", "message_id", "purpose", "question", "reason"],
+        "properties": {
+          "gap_id": {"type": "string"},
+          "run_id": {"type": "string"},
+          "message_id": {"type": "string"},
+          "purpose": {"type": "string", "enum": ["person", "game_info", "game_guide", "game_item"]},
+          "question": {"type": "string"},
+          "reason": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

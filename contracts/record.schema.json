@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Knowledge material record",
+  "type": "object",
+  "required": ["record_id", "kind", "topic", "summary", "tags", "source"],
+  "properties": {
+    "record_id": {"type": "string"},
+    "kind": {"type": "string", "enum": ["person", "game_info", "game_guide", "game_item"]},
+    "topic": {"type": "string"},
+    "summary": {"type": "string"},
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "gap_id": {"type": "string"},
+    "source": {
+      "type": "object",
+      "required": ["source_id", "source_type", "title", "locator", "accessed_at"],
+      "properties": {
+        "source_id": {"type": "string"},
+        "source_type": {"type": "string"},
+        "title": {"type": "string"},
+        "locator": {"type": "string"},
+        "accessed_at": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

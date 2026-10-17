@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fixed local tool preparation settings",
+  "type": "object",
+  "required": ["mode", "tools"],
+  "properties": {
+    "mode": {"type": "string", "enum": ["fixture_only"]},
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "state", "input_contract"],
+        "properties": {
+          "name": {"type": "string"},
+          "state": {"type": "string", "enum": ["documented_not_connected"]},
+          "input_contract": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

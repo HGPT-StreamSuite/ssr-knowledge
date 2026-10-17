@@ -1,0 +1,15 @@
+{
+  "mode": "fixture_only",
+  "tools": [
+    {
+      "name": "wiki_reader",
+      "state": "documented_not_connected",
+      "input_contract": "kind + query text -> materials, sources, and status"
+    },
+    {
+      "name": "research_source_import",
+      "state": "documented_not_connected",
+      "input_contract": "human supplied sourced records -> pending candidate"
+    }
+  ]
+}

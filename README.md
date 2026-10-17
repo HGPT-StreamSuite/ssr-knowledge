@@ -1,2 +1,42 @@
 # ssr-knowledge
-本機可執行的三條獨立知識準備工作流；候選與發布隔離，缺口補充需人工核准。
+
+`ssr-knowledge` is an independently runnable, local-only set of knowledge preparation workflows. It does not wait for or call the chat runtime, assume a shared database, or import code from another repository. It reads and writes JSON files under the selected state directory.
+
+## Three independent workflows
+
+1. **Prebuild:** normalize a local source bundle into a candidate. Candidates require review before they can be published. The prebuild review policy is still a product decision; this repo uses manual review as a conservative local default.
+2. **Gap supplementation:** import exported question gaps and separately supplied researched records. Every gap must be covered by at least one record with a source. The candidate cannot be published until a human approves it.
+3. **Fixed tool preparation:** inspect a local, fixture-only list of planned tool adapters. No tool is executed, configured with credentials, or connected to a service.
+
+Candidates and published versions are stored separately. Publishing creates an immutable versioned JSON bundle; `query` requires an explicit version and reads only published bundles. There is no shared database or implicit `latest` pointer. The exact version exchange format between future systems is still undecided.
+
+## Run locally
+
+This repo uses Python 3.11+ and the standard library only. `uv.lock` records the empty dependency set.
+
+```powershell
+uv --cache-dir .uv-cache --offline lock
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge prebuild --source fixtures/prebuild-source.json --state-dir .local-state
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge tools
+uv --cache-dir .uv-cache --offline run python -m unittest discover -s tests -v
+```
+
+The CLI prints a candidate ID. Review and publish it explicitly:
+
+```powershell
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge review --candidate-id CANDIDATE_ID --decision approve --reviewer human --state-dir .local-state
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge publish --candidate-id CANDIDATE_ID --version v0.1.0 --state-dir .local-state
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge query --version v0.1.0 --kind game_item --text "星砂"
+```
+
+Supplementation takes a gap export and human-prepared sourced records:
+
+```powershell
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge supplement --gaps fixtures/gap-export.json --records fixtures/gap-records.json --state-dir .local-state
+```
+
+## Local contracts and boundaries
+
+`contracts/` contains this repo's own JSON Schemas. The standard-library validator checks local fixtures and user-supplied documents against those schemas. Query responses contain only `status`, `materials`, `sources`, and the requested `version`; operational diagnostics stay in the local audit log.
+
+No web research, platform connection, model call, deployment, or remote persistence is implemented. Research inputs in fixtures are fictional. A person must inspect candidate content and explicitly approve it before publication; the exact review UI and prebuild policy remain undecided.
