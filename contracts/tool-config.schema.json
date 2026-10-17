@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fixed local tool preparation settings",
+  "type": "object",
+  "required": ["config_version", "mode", "network_enabled", "tools"],
+  "properties": {
+    "config_version": {"type": "string"},
+    "mode": {"type": "string", "enum": ["documented_not_connected"]},
+    "network_enabled": {"type": "boolean", "enum": [false]},
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "adapter_kind", "state", "provider_status", "interface_version", "parameters", "outputs"],
+        "properties": {
+          "name": {"type": "string"},
+          "adapter_kind": {"type": "string", "enum": ["source", "http_api", "mcp", "manual_import"]},
+          "state": {"type": "string", "enum": ["documented_not_connected"]},
+          "provider_status": {"type": "string", "enum": ["undecided"]},
+          "interface_version": {"type": "string"},
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "type", "required"],
+              "properties": {
+                "name": {"type": "string"},
+                "type": {"type": "string", "enum": ["string", "integer", "number", "boolean", "object", "array"]},
+                "required": {"type": "boolean"}
+              },
+              "additionalProperties": false
+            }
+          },
+          "outputs": {"type": "array", "items": {"type": "string"}}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

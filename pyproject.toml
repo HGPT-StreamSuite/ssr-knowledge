@@ -1,0 +1,10 @@
+[project]
+name = "ssr-knowledge"
+version = "0.1.0"
+description = "Independent local knowledge preparation workflows"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false

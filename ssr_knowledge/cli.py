@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any
+
+from .contracts import read_json, validate
+from .store import LocalKnowledgeStore
+from .workflows import prepare_gap_research, prepare_gap_supplement, prepare_prebuild, query_published, review_candidate
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _print(value: Any) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="ssr-knowledge")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    prebuild = commands.add_parser("prebuild", help="prepare a reviewed candidate from a local source bundle")
+    prebuild.add_argument("--source", required=True)
+    prebuild.add_argument("--state-dir", default=".local-state")
+
+    research = commands.add_parser("research", help="save a complete offline research packet from gaps and sourced records")
+    research.add_argument("--gaps", required=True)
+    research.add_argument("--records", required=True)
+    research.add_argument("--state-dir", default=".local-state")
+
+    supplement = commands.add_parser("supplement", help="create a pending candidate from a saved research packet")
+    supplement.add_argument("--research-id", required=True)
+    supplement.add_argument("--state-dir", default=".local-state")
+
+    review = commands.add_parser("review", help="record a human candidate review")
+    review.add_argument("--candidate-id", required=True)
+    review.add_argument("--decision", choices=("approve", "reject"), required=True)
+    review.add_argument("--reviewer", required=True)
+    review.add_argument("--note", default="")
+    review.add_argument("--state-dir", default=".local-state")
+
+    publish = commands.add_parser("publish", help="publish an approved candidate as an immutable version")
+    publish.add_argument("--candidate-id", required=True)
+    publish.add_argument("--version", required=True)
+    publish.add_argument("--state-dir", default=".local-state")
+
+    query = commands.add_parser("query", help="read one explicit published version")
+    query.add_argument("--version", required=True)
+    query.add_argument("--kind", choices=("person", "game_info", "game_guide", "game_item"), required=True)
+    query.add_argument("--text", default="")
+    query.add_argument("--state-dir", default=".local-state")
+
+    tools = commands.add_parser("tools", help="validate, save, or read local versioned adapter manifests")
+    tools.add_argument("--config", default=str(ROOT / "fixtures" / "tool-config.json"))
+    tool_action = tools.add_mutually_exclusive_group()
+    tool_action.add_argument("--save", action="store_true", help="save the config as a new immutable local version")
+    tool_action.add_argument("--version", help="read a saved local tool config version")
+    tools.add_argument("--state-dir", default=".local-state")
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    store = LocalKnowledgeStore(getattr(args, "state_dir", ".local-state"))
+    if args.command == "prebuild":
+        result = prepare_prebuild(read_json(args.source), store)
+    elif args.command == "research":
+        result = prepare_gap_research(read_json(args.gaps), read_json(args.records), store)
+    elif args.command == "supplement":
+        result = prepare_gap_supplement(args.research_id, store)
+    elif args.command == "review":
+        result = review_candidate(args.candidate_id, args.decision, args.reviewer, args.note, store)
+    elif args.command == "publish":
+        result = store.publish(args.candidate_id, args.version)
+    elif args.command == "query":
+        result = query_published(args.version, args.kind, args.text, store)
+    else:
+        if args.version:
+            result = store.load_tool_config(args.version)
+        else:
+            config = read_json(args.config)
+            store.validate_tool_config(config)
+            result = (
+                {"state": "saved", "config": store.save_tool_config(config)}
+                if args.save
+                else config
+            )
+    _print(result)
+
+
+if __name__ == "__main__":
+    main()

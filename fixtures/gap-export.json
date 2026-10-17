@@ -1,0 +1,13 @@
+{
+  "export_id": "fixture-gap-export-001",
+  "gaps": [
+    {
+      "gap_id": "gap-game-item-001",
+      "run_id": "run-fixture-001",
+      "message_id": "message-fixture-001",
+      "purpose": "game_item",
+      "question": "\u661f\u7802\u53ef\u4ee5\u505a\u4ec0\u9ebc\uff1f",
+      "reason": "knowledge_gap"
+    }
+  ]
+}

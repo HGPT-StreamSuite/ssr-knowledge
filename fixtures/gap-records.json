@@ -1,0 +1,19 @@
+{
+  "records": [
+    {
+      "record_id": "fixture-gap-item-stardust",
+      "kind": "game_item",
+      "topic": "\u661f\u7802",
+      "summary": "\u865b\u69cb\u6e2c\u8a66\u8cc7\u6599\uff1a\u661f\u7802\u53ef\u4ee5\u7528\u65bc\u88fd\u4f5c\u6a21\u64ec\u9053\u5177\u3002",
+      "tags": ["\u7528\u9014", "\u6e2c\u8a66"],
+      "gap_id": "gap-game-item-001",
+      "source": {
+        "source_id": "fixture-researched-item",
+        "source_type": "fictional_primary_source",
+        "title": "\u865b\u69cb\u6e2c\u8a66\u9053\u5177\u8cc7\u6599",
+        "locator": "fixture://research/items/stardust",
+        "accessed_at": "2026-10-17T00:00:00Z"
+      }
+    }
+  ]
+}
