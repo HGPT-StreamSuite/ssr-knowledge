@@ -128,6 +128,14 @@ class Catalog:
                 snapshot_id TEXT NOT NULL REFERENCES snapshots, PRIMARY KEY(revision_id,snapshot_id)
             );
             CREATE INDEX IF NOT EXISTS citations_snapshot ON citations(snapshot_id);
+            CREATE TABLE IF NOT EXISTS entry_relations (
+                revision_id INTEGER NOT NULL REFERENCES entry_revisions,
+                target_entry_id TEXT NOT NULL REFERENCES entries,
+                kind TEXT NOT NULL, citation_index INTEGER NOT NULL,
+                note_index INTEGER, evidence_text TEXT NOT NULL,
+                PRIMARY KEY(revision_id,target_entry_id,kind)
+            );
+            CREATE INDEX IF NOT EXISTS relations_target ON entry_relations(target_entry_id);
             PRAGMA user_version = 1;
         """)
 
@@ -242,7 +250,7 @@ class Catalog:
     def _validate_draft(self, value: Any) -> dict[str, Any]:
         fields = {"entry_id", "game", "category", "name_en", "name_zh", "aliases", "summary_zh",
                   "evidence_class", "citations", "editor", "game_version", "limitations"}
-        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details", "names"}:
+        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details", "names", "organization", "badge_details", "links", "detail_page"}:
             raise ContractError("draft must contain exactly the documented fields")
         identifier(value["entry_id"])
         if value["game"] != "PEAK:3527290" or value["category"] not in CATEGORIES:
@@ -290,6 +298,10 @@ class Catalog:
             raise ContractError("item_details is not pinned to any cited source row")
         from .names import validate_names
         validate_names(value, name_snapshots)
+        from .organization import validate_organization, validate_badge, validate_links
+        validate_organization(value)
+        validate_badge(value, name_snapshots, lambda sid: self.db.execute("SELECT raw FROM snapshots WHERE snapshot_id=?", (sid,)).fetchone()[0])
+        validate_links(value, lambda eid: self.entry(eid)["entry"], name_snapshots)
         return value
 
     def import_drafts(self, drafts: Any) -> list[dict[str, Any]]:
@@ -316,12 +328,17 @@ class Catalog:
                 if "item_details" in value:
                     detail = value["item_details"]
                     search += " " + normalize(" ".join(detail["notes_en"] + detail["notes_zh"] + detail["biomes_en"] + detail["locations_en"]))
+                if "badge_details" in value:
+                    search += " " + normalize(value["badge_details"]["condition_en"] + " " + value["badge_details"]["condition_zh"])
                 cur = self.db.execute("""INSERT INTO entry_revisions(entry_id,payload_json,payload_sha256,search_text,created_at,status)
                     VALUES(?,?,?,?,?,'pending_review')""", (value["entry_id"], payload, digest(payload), search, utc_now()))
                 revision = cur.lastrowid
                 self.db.execute("UPDATE entries SET current_revision=? WHERE entry_id=?", (revision, value["entry_id"]))
                 self.db.executemany("INSERT OR IGNORE INTO citations VALUES(?,?)",
                                     [(revision, c["snapshot_id"]) for c in value["citations"]])
+                self.db.executemany("INSERT INTO entry_relations VALUES(?,?,?,?,?,?)",
+                                    [(revision, link["target_entry_id"], link["kind"], link["citation"], link["note_index"], link["evidence_text"])
+                                     for link in value.get("links", [])])
                 results.append({"entry_id": value["entry_id"], "revision_id": revision,
                                 "state": "saved", "status": "pending_review"})
             self.db.execute("INSERT INTO events(at,event,details_json) VALUES(?, 'draft_import', ?)",
@@ -385,6 +402,23 @@ class Catalog:
                             (utc_now(), canonical({"entry_id": entry_id, "revision_id": revision})))
         return self.entry(entry_id)
 
+    def relations(self, entry_id: str) -> dict[str, Any]:
+        """Private current-revision graph; never used by published search."""
+        self.entry(entry_id)
+        rows = self.db.execute("""SELECT r.entry_id AS source_entry_id, l.* FROM entry_relations l
+            JOIN entry_revisions r USING(revision_id) JOIN entries e ON e.current_revision=r.revision_id
+            WHERE r.entry_id=? OR l.target_entry_id=? ORDER BY r.entry_id,l.target_entry_id,l.kind""", (entry_id, entry_id))
+        result = []
+        for row in rows:
+            value = dict(row)
+            other = row["target_entry_id"] if row["source_entry_id"] == entry_id else row["source_entry_id"]
+            target = self.entry(other)
+            value.update({"direction": "outgoing" if row["source_entry_id"] == entry_id else "incoming",
+                          "related_entry_id": other, "related_names": target["display_names"], "related_status": target["status"],
+                          "evidence_state": "partial_item_hint" if row["kind"] == "badge_hint" else "official_condition_mention"})
+            result.append(value)
+        return {"scope": "review_preview", "entry_id": entry_id, "relations": result}
+
     def search(self, text: str, *, preview: bool = False, limit: int = 20, names_only: bool = False) -> dict[str, Any]:
         required_text(text, "search text", 200)
         if not 1 <= limit <= 100:
@@ -433,6 +467,10 @@ class Catalog:
                     continue
             # Formal results never return private evidence quotes or raw source body.
             item["entry"] = dict(item["entry"])
+            if not preview:
+                # A published source must not reveal identifiers/evidence from a
+                # linked pending/rejected/stale target. Inspect the graph privately.
+                item["entry"].pop("links", None)
             item["entry"]["citations"] = [{k: v for k, v in c.items() if k != "evidence_quote"}
                                           for c in item["entry"]["citations"]]
             item["name_matches"] = exact_names
@@ -449,7 +487,7 @@ class Catalog:
 
     def stats(self) -> dict[str, Any]:
         counts = {table: self.db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-                  for table in ("sources", "snapshots", "entries", "entry_revisions", "events")}
+                  for table in ("sources", "snapshots", "entries", "entry_revisions", "events", "entry_relations")}
         states = {row["status"]: row["n"] for row in self.db.execute("""SELECT r.status,count(*) AS n
             FROM entries e JOIN entry_revisions r ON r.revision_id=e.current_revision GROUP BY r.status""")}
         return {"data_dir": str(self.root), "database": str(self.root / "knowledge.sqlite3"),

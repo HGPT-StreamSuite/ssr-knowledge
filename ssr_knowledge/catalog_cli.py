@@ -29,6 +29,9 @@ def add_catalog_parser(commands: Any) -> None:
     pair.add_argument("--en-snapshot-id", required=True)
     pair.add_argument("--zh-snapshot-id", required=True)
     pair.add_argument("--items-snapshot-id", required=True)
+    badges = actions.add_parser("badge-drafts", help="project exact names/conditions from already saved official CSV; no fetch, extraction or approval")
+    badges.add_argument("--en-snapshot-id", required=True)
+    badges.add_argument("--zh-snapshot-id", required=True)
     upload = actions.add_parser("import-text-source", help="save explicitly supplied UTF-8 text and provenance; no HTTP")
     upload.add_argument("--file", required=True)
     upload.add_argument("--receipt", required=True)
@@ -63,6 +66,10 @@ def add_catalog_parser(commands: Any) -> None:
     entry = actions.add_parser("entry", help="inspect a private draft or a historical revision")
     entry.add_argument("--entry-id", required=True)
     entry.add_argument("--revision", type=int)
+    relations = actions.add_parser("relations", help="private incoming/outgoing current item-badge relations")
+    relations.add_argument("--entry-id", required=True)
+    render = actions.add_parser("render-review", help="write a private readable HTML preview from saved DB entries")
+    render.add_argument("--output", required=True)
     review = actions.add_parser("review-entry", help="human review of an explicit current revision")
     review.add_argument("--entry-id", required=True)
     review.add_argument("--revision", type=int, required=True)
@@ -87,6 +94,9 @@ def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
     if args.action == "extract-game-names":
         return extract_installed_text(args.game_dir, args.output_dir), 0
     with Catalog(args.data_dir) as store:
+        if args.action == "badge-drafts":
+            from .organization import badge_drafts
+            return badge_drafts(store, args.en_snapshot_id, args.zh_snapshot_id), 0
         if args.action == "import-game-text":
             return import_game_text(store, args.file, read_json(args.receipt)), 0
         if args.action == "pair-game-names":
@@ -140,6 +150,11 @@ def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
             return {"results": store.import_drafts(read_json(args.file))}, 0
         if args.action == "entry":
             return store.entry(args.entry_id, args.revision), 0
+        if args.action == "relations":
+            return store.relations(args.entry_id), 0
+        if args.action == "render-review":
+            from .review_page import render_review
+            return render_review(store, args.output), 0
         if args.action == "review-entry":
             return store.review(args.entry_id, args.revision, args.decision, args.reviewer, args.note, args.human_reviewed), 0
         if args.action == "publish-entry":

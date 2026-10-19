@@ -26,6 +26,8 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog search --
 
 資料目錄也可由 `catalog --data-dir PATH` 指定；預設為 `%LOCALAPPDATA%\SSRKnowledge\data`，任何 Git checkout 內的路徑都會被拒絕。執行前檢查至少 50 MiB 可用空間。不安裝額外 SQLite extension、向量資料庫或模型。詳細資料格式、審核命令、來源追溯及 `snapshot-diff` 手動更新見 [PEAK 蒐集與驗收](docs/peak-collection.md)；已收／待收／待整理／受限與 Wiki 對映見 [coverage](docs/peak-coverage.md)。URL 不等於 LLM 已讀取；用途未知不自動視為許可或禁止。
 
+現有資料的用途整理、獨立遊戲徽章、道具關聯與精簡 DB 驗收頁，見 [內容整理與徽章](docs/peak-organization.md)。`catalog relations` 可讀回穩定 ID 關聯，`catalog render-review` 從 SQLite 產生私有可讀頁；不會核准或發布資料。
+
 ## 原有離線工作流
 
 使用者提供的 PEAK Items 文字也可透過 `catalog import-text-source` 保存原始bytes與來源／授權，再以 `parse-peak-items` 重現列數與數值解析。此途徑沒有HTTP請求，不代表直接爬取成功。本輪附件實際132個唯一道具（頁首宣稱134，差2待查），128新增／4更新，全部待審；詳見 [道具附件匯入與缺欄](docs/peak-items-upload.md)。
