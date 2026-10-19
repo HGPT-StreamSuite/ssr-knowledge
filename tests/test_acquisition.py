@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import copy
+import io
+import socket
+import ssl
 import tempfile
+import urllib.error
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from ssr_knowledge.acquisition import BodyExtractor, Collector, HttpTransport, Response, robots_policy, safe_url, validate_manifest
+from ssr_knowledge.acquisition import BodyExtractor, Collector, HttpTransport, Response, _PinnedHTTPSConnection, robots_policy, safe_url, validate_manifest
 from ssr_knowledge.catalog import Catalog
 from ssr_knowledge.contracts import ContractError
-from test_catalog import source
+from test_catalog import seed, source
 
 
 HTML = b'''<html><head><title>Synthetic fixture</title><meta property="article:modified_time" content="2026-10-19"/></head>
@@ -139,6 +143,59 @@ class AcquisitionTests(unittest.TestCase):
         self.assertEqual(len(transport.calls), 1)
         self.assertIn("robots", blocked["error"])
 
+    def test_robots_200_challenge_or_unsupported_encoding_never_requests_target(self) -> None:
+        cases = [
+            Response(200, {"content-type": "text/html"}, b"<html><title>Just a moment</title></html>"),
+            robots(b"<!DOCTYPE html><html><body>Access denied</body></html>"),
+            robots(b"Access denied"),
+            robots(b"Just a moment... Verify you are human"),
+            robots(b"User-agent: *\nAllow: /\nCaptcha required"),
+            Response(200, {"content-type": "application/json"}, b'{"error":"access denied"}'),
+            Response(200, {"content-type": "text/plain", "content-encoding": "gzip"}, b"compressed bytes"),
+            Response(200, {"content-type": "text/plain", "content-encoding": "br"}, b"compressed bytes"),
+            Response(200, {"content-type": "text/plain; charset=utf-16"}, b"User-agent: *\nAllow: /"),
+            Response(200, {"content-type": "text/plain; charset=unsupported-encoding"}, b"User-agent: *"),
+            robots(b"\xff\xfe\x00bad encoding"),
+            robots(b"User-agent: *\nAllow: /\x00"),
+        ]
+        for response in cases:
+            with self.subTest(headers=response.headers, raw=response.raw):
+                result, transport = self.collect([response])
+                self.assertEqual(result["state"], "blocked_or_failed")
+                self.assertEqual(transport.calls, ["https://example.test/robots.txt"])
+                self.assertEqual(sum(url == self.source["url"] for url in transport.calls), 0)
+        self.assertEqual(self.store.stats()["counts"]["snapshots"], 0)
+
+    def test_legitimate_empty_or_comment_only_robots_still_permits_target(self) -> None:
+        for raw in (b"", b" \r\n\t ", b"# No restrictions\n", b"\xef\xbb\xbf# UTF-8 BOM comment\n"):
+            with self.subTest(raw=raw):
+                result, transport = self.collect([robots(raw), ok()])
+                self.assertIn(result["state"], {"saved", "unchanged"})
+                self.assertEqual(transport.calls, ["https://example.test/robots.txt", self.source["url"]])
+
+    def test_later_robots_disallow_does_not_revoke_saved_entry_but_explicit_policy_does(self) -> None:
+        config, draft = seed(self.store)
+        revision = self.store.import_drafts({"entries": [draft]})[0]["revision_id"]
+        self.store.review(draft["entry_id"], revision, "approve", "synthetic-human", "Fixture-only review", True)
+        self.store.publish(draft["entry_id"], revision)
+        result, transport = self.collect([robots(b"User-agent: *\nDisallow: /\n")], config)
+        self.assertEqual(result["state"], "blocked_or_failed")
+        self.assertEqual(transport.calls, ["https://example.test/robots.txt"])
+        self.assertEqual(self.store.search("Lunar Rope")["matches"][0]["status"], "published")
+        revoked = copy.deepcopy(config)
+        revoked["policy"]["allow_fetch"] = False
+        _, transport = self.collect([], revoked)
+        self.assertEqual(transport.calls, [])
+        self.assertEqual(self.store.search("Lunar Rope")["matches"], [])
+
+    def test_robots_supports_quoted_utf8_and_ascii_charsets(self) -> None:
+        for content_type in ('text/plain; charset="UTF-8"', 'text/plain; charset=US-ASCII'):
+            with self.subTest(content_type=content_type):
+                response = Response(200, {"content-type": content_type}, b"User-agent: *\nAllow: /\n")
+                result, transport = self.collect([response, ok()])
+                self.assertIn(result["state"], {"saved", "unchanged"})
+                self.assertEqual(transport.calls[-1], self.source["url"])
+
     def test_forbidden_and_redirect_no_retry_or_follow(self) -> None:
         for status in (401, 403, 301, 302, 404):
             with self.subTest(status=status):
@@ -174,6 +231,140 @@ class AcquisitionTests(unittest.TestCase):
         for raw in (b"<html><title>Just a moment</title><main>challenge text long enough to pass extraction but should be blocked</main></html>", b"<article>Missing main must never be silently accepted as the whole page</article>"):
             result, _ = self.collect([robots(), ok(raw)])
             self.assertEqual(result["state"], "blocked_or_failed")
+
+
+class WireSocket:
+    """Synthetic TCP/TLS stream; records actual HTTP Host bytes, opens no real socket."""
+
+    def __init__(self, status: int = 200) -> None:
+        self.endpoint = None
+        self.sent = bytearray()
+        self.closed = False
+        self.wire = (f"HTTP/1.1 {status} Test\r\nContent-Type: text/html; charset=utf-8\r\n"
+                     f"Content-Length: {len(HTML)}\r\nConnection: close\r\n\r\n").encode() + HTML
+
+    def settimeout(self, value) -> None:
+        self.timeout = value
+
+    def connect(self, endpoint) -> None:
+        self.endpoint = endpoint
+
+    def sendall(self, data) -> None:
+        self.sent.extend(data)
+
+    def makefile(self, *_args, **_kwargs):
+        return io.BytesIO(self.wire)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class PinnedTransportTests(unittest.TestCase):
+    PUBLIC = (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("1.1.1.1", 443))
+    PRIVATE = (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", 443))
+
+    def setUp(self) -> None:
+        self.proxy_patch = patch("ssr_knowledge.acquisition.urllib.request.getproxies", return_value={})
+        self.proxy_patch.start()
+        self.addCleanup(self.proxy_patch.stop)
+
+    @staticmethod
+    def context() -> Mock:
+        context = Mock(check_hostname=True, verify_mode=ssl.CERT_REQUIRED)
+        context.wrap_socket.side_effect = lambda raw, *, server_hostname: raw
+        return context
+
+    def test_dns_rebinding_answer_is_never_used_by_the_socket(self) -> None:
+        wire, context = WireSocket(), self.context()
+        with patch("ssr_knowledge.acquisition.socket.getaddrinfo", side_effect=[[self.PUBLIC], [self.PRIVATE]]) as dns, \
+             patch("ssr_knowledge.acquisition.socket.socket", return_value=wire) as sockets, \
+             patch("ssr_knowledge.acquisition.ssl.create_default_context", return_value=context):
+            transport = HttpTransport()
+            result = transport.get("https://example.test/page?x=1", 1000)
+            self.assertEqual(result.raw, HTML)
+            self.assertEqual(dns.call_count, 1)  # No second hostname lookup at TCP connect.
+            self.assertEqual(wire.endpoint, ("1.1.1.1", 443))
+            sockets.assert_called_once_with(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+            context.wrap_socket.assert_called_once_with(wire, server_hostname="example.test")
+            self.assertIn(b"Host: example.test\r\n", wire.sent)
+            self.assertIn(b"GET /page?x=1 HTTP/1.1\r\n", wire.sent)
+            self.assertNotIn(b"Host: 1.1.1.1", wire.sent)
+            # A later request resolves again, then rejects the now-private answer before TCP.
+            with self.assertRaisesRegex(ContractError, "non-public"):
+                transport.get("https://example.test/next", 1000)
+            self.assertEqual(dns.call_count, 2)
+            self.assertEqual(sockets.call_count, 1)
+
+    def test_mixed_public_private_dns_answer_sends_no_request(self) -> None:
+        with patch("ssr_knowledge.acquisition.socket.getaddrinfo", return_value=[self.PUBLIC, self.PRIVATE]), \
+             patch("ssr_knowledge.acquisition.socket.socket") as sockets:
+            with self.assertRaisesRegex(ContractError, "non-public"):
+                HttpTransport().get("https://example.test/page", 1000)
+            sockets.assert_not_called()
+
+    def test_ipv6_uses_validated_numeric_endpoint_and_original_hostname(self) -> None:
+        answer = (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("2606:4700:4700::1111", 443, 0, 0))
+        wire, context = WireSocket(), self.context()
+        with patch("ssr_knowledge.acquisition.socket.getaddrinfo", return_value=[answer]) as dns, \
+             patch("ssr_knowledge.acquisition.socket.socket", return_value=wire), \
+             patch("ssr_knowledge.acquisition.ssl.create_default_context", return_value=context):
+            HttpTransport().get("https://example.test/page", 1000)
+            self.assertEqual(wire.endpoint, ("2606:4700:4700::1111", 443, 0, 0))
+            self.assertEqual(dns.call_count, 1)
+            context.wrap_socket.assert_called_once_with(wire, server_hostname="example.test")
+        self.assertEqual(safe_url("https://[2606:4700:4700::1111]/page"), "https://[2606:4700:4700::1111]/page")
+
+    def test_configured_proxies_fail_before_dns_or_socket_even_with_no_proxy(self) -> None:
+        for kind in ("http", "https", "all"):
+            with self.subTest(kind=kind), \
+                 patch("ssr_knowledge.acquisition.urllib.request.getproxies", return_value={kind: "http://proxy.test:8080", "no": "*"}), \
+                 patch("ssr_knowledge.acquisition.socket.getaddrinfo") as dns, \
+                 patch("ssr_knowledge.acquisition.socket.socket") as sockets:
+                with self.assertRaisesRegex(ContractError, "proxy unsupported"):
+                    HttpTransport().get("https://example.test/page", 1000)
+                dns.assert_not_called()
+                sockets.assert_not_called()
+
+    def test_real_default_tls_context_requires_certificate_and_hostname_verification(self) -> None:
+        transport = HttpTransport()
+        self.assertTrue(transport._context.check_hostname)
+        self.assertEqual(transport._context.verify_mode, ssl.CERT_REQUIRED)
+
+    def test_certificate_validation_failure_closes_socket_without_fallback(self) -> None:
+        wire, context = WireSocket(), self.context()
+        context.wrap_socket.side_effect = ssl.SSLCertVerificationError("synthetic hostname mismatch")
+        with patch("ssr_knowledge.acquisition.socket.getaddrinfo", return_value=[self.PUBLIC]) as dns, \
+             patch("ssr_knowledge.acquisition.socket.socket", return_value=wire) as sockets, \
+             patch("ssr_knowledge.acquisition.ssl.create_default_context", return_value=context):
+            with self.assertRaises(urllib.error.URLError):
+                HttpTransport().get("https://example.test/page", 1000)
+            self.assertTrue(wire.closed)
+            self.assertEqual(dns.call_count, 1)
+            self.assertEqual(sockets.call_count, 1)
+            self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(context.check_hostname)
+
+    def test_unverified_tls_context_or_proxy_tunnel_is_refused(self) -> None:
+        peer = (socket.AF_INET, ("1.1.1.1", 443))
+        with patch("ssr_knowledge.acquisition.socket.socket") as sockets:
+            with self.assertRaisesRegex(ContractError, "verified TLS"):
+                _PinnedHTTPSConnection("example.test", expected_host="example.test", peer=peer,
+                                       context=ssl._create_unverified_context(), timeout=15)
+            connection = _PinnedHTTPSConnection("example.test", expected_host="example.test", peer=peer,
+                                               context=ssl.create_default_context(), timeout=15)
+            connection.set_tunnel("internal.test")
+            with self.assertRaisesRegex(ContractError, "proxy tunnels"):
+                connection.connect()
+            sockets.assert_not_called()
+
+    def test_pinned_transport_does_not_follow_redirect(self) -> None:
+        wire, context = WireSocket(status=302), self.context()
+        with patch("ssr_knowledge.acquisition.socket.getaddrinfo", return_value=[self.PUBLIC]) as dns, \
+             patch("ssr_knowledge.acquisition.socket.socket", return_value=wire) as sockets, \
+             patch("ssr_knowledge.acquisition.ssl.create_default_context", return_value=context):
+            self.assertEqual(HttpTransport().get("https://example.test/page", 1000).status, 302)
+            self.assertEqual(dns.call_count, 1)
+            self.assertEqual(sockets.call_count, 1)
 
 
 if __name__ == "__main__":

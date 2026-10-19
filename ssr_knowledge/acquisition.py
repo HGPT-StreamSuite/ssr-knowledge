@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import codecs
+import http.client
 import ipaddress
 import json
 import re
 import socket
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -13,6 +15,7 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from email.message import Message
 from html.parser import HTMLParser
 from typing import Any
 
@@ -35,15 +38,16 @@ def safe_url(value: Any) -> str:
     except ValueError as exc:
         raise ContractError("only credential-free public HTTPS URLs on port 443 without fragments are supported") from exc
     host = parsed.hostname.lower()
-    if host == "localhost" or "." not in host or host.endswith((".local", ".internal")):
-        raise ContractError("public hostname required")
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
         address = None
-    if address is not None and not address.is_global:
+    if address is None and (host == "localhost" or "." not in host or host.endswith((".local", ".internal"))):
+        raise ContractError("public hostname required")
+    if address is not None and (not address.is_global or "%" in host):
         raise ContractError("non-public address forbidden")
-    return urllib.parse.urlunsplit(("https", host, parsed.path or "/", parsed.query, ""))
+    authority = f"[{host}]" if ":" in host else host
+    return urllib.parse.urlunsplit(("https", authority, parsed.path or "/", parsed.query, ""))
 
 
 def validate_manifest(value: Any) -> list[dict[str, Any]]:
@@ -232,23 +236,121 @@ class Response:
     raw: bytes
 
 
+def decode_robots(response: Response) -> str:
+    """Reject challenge/error documents before interpreting a 200 as robots rules."""
+    if response.headers.get("content-encoding", "identity").strip().lower() != "identity":
+        raise ContractError("robots unsupported content encoding; fail closed")
+    content_type = Message()
+    content_type["content-type"] = response.headers.get("content-type", "")
+    if content_type.get_content_type().lower() != "text/plain":
+        raise ContractError("robots must be text/plain, not HTML/challenge content; fail closed")
+    charset = content_type.get_content_charset() or "utf-8"
+    try:
+        encoding = codecs.lookup(charset).name
+    except LookupError as exc:
+        raise ContractError("robots unsupported charset; fail closed") from exc
+    if encoding not in {"utf-8", "utf-8-sig", "ascii"}:
+        raise ContractError("robots unsupported charset; expected UTF-8 or ASCII; fail closed")
+    try:
+        text = response.raw.decode("ascii" if encoding == "ascii" else "utf-8-sig", errors="strict")
+    except UnicodeError as exc:
+        raise ContractError("robots invalid text encoding; fail closed") from exc
+    if any(ord(c) < 32 and c not in "\t\r\n" or ord(c) == 127 for c in text):
+        raise ContractError("robots contains non-text control bytes; fail closed")
+    lines = [line.split("#", 1)[0].strip() for line in text.splitlines()]
+    active = [line for line in lines if line]
+    # Empty/whitespace/comment-only robots are legitimate. A challenge page or an
+    # unstructured error message is not an empty rule set, even if mislabeled plain text.
+    if any(re.search(r"<\s*(?:!doctype|/?[a-z][\w:-]*\b)[^>]*>", line, re.I) for line in active):
+        raise ContractError("robots HTML/XML challenge detected; fail closed")
+    if any(not re.match(r"^[A-Za-z][A-Za-z0-9_-]*\s*:", line) for line in active):
+        raise ContractError("robots unstructured error/challenge content; fail closed")
+    known = {"user-agent", "allow", "disallow", "sitemap", "host", "crawl-delay", "request-rate",
+             "content-signal", "clean-param", "visit-time"}
+    if active and not any(line.split(":", 1)[0].strip().lower() in known for line in active):
+        raise ContractError("robots contains no supported directives; fail closed")
+    return text
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *_: Any, **__: Any) -> None:
         return None
 
 
+def _public_peer(host: str) -> tuple[int, tuple[Any, ...]]:
+    """Resolve once, reject the entire answer if any address is not public, then pin one."""
+    answers = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+    peers = []
+    for family, socktype, protocol, _, sockaddr in answers:
+        if family not in {socket.AF_INET, socket.AF_INET6} or socktype != socket.SOCK_STREAM or protocol != socket.IPPROTO_TCP:
+            raise ContractError("DNS returned an unsupported socket address")
+        ip = ipaddress.ip_address(sockaddr[0])
+        if not ip.is_global or "%" in str(ip) or ip.version != (4 if family == socket.AF_INET else 6):
+            raise ContractError("DNS resolved to a non-public address")
+        # Rebuild a numeric endpoint, never reuse resolver-controlled host/port/scope fields.
+        endpoint = (str(ip), 443) if family == socket.AF_INET else (str(ip), 443, 0, 0)
+        peers.append((family, endpoint))
+    if not peers:
+        raise ContractError("DNS returned no public addresses")
+    # One TCP/TLS attempt per HTTP attempt preserves the timeout bound. Prefer IPv4
+    # when both families exist; the outer bounded retry may obtain a new validated peer.
+    return next((peer for peer in peers if peer[0] == socket.AF_INET), peers[0])
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(self, host: str, *, expected_host: str, peer: tuple[int, tuple[Any, ...]], **kwargs: Any) -> None:
+        super().__init__(host, **kwargs)
+        if self.host != expected_host or self.port != 443:
+            raise ContractError("connection hostname differs from the validated origin")
+        if not self._context.check_hostname or self._context.verify_mode != ssl.CERT_REQUIRED:
+            raise ContractError("verified TLS context with hostname checking is required")
+        self._peer = peer
+
+    def connect(self) -> None:
+        if self._tunnel_host:
+            raise ContractError("proxy tunnels are unsupported by the pinned-IP transport")
+        family, endpoint = self._peer
+        raw = socket.socket(family, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+        try:
+            raw.settimeout(self.timeout)
+            raw.connect(endpoint)  # Numeric validated IP: no hostname resolution here.
+            # Keep the original hostname for SNI and certificate hostname validation.
+            self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
+        except BaseException:
+            raw.close()
+            raise
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, host: str, peer: tuple[int, tuple[Any, ...]], context: ssl.SSLContext) -> None:
+        super().__init__(context=context)
+        self._expected_host, self._peer = host, peer
+
+    def https_open(self, req: urllib.request.Request) -> Any:
+        def connection(host: str, **kwargs: Any) -> _PinnedHTTPSConnection:
+            return _PinnedHTTPSConnection(host, expected_host=self._expected_host, peer=self._peer, **kwargs)
+        return self.do_open(connection, req, context=self._context)
+
+
 class HttpTransport:
     def __init__(self) -> None:
-        self.opener = urllib.request.build_opener(NoRedirect())
+        self._context = ssl.create_default_context()
+        self._context.set_alpn_protocols(["http/1.1"])
 
     def get(self, url: str, max_bytes: int) -> Response:
+        # A proxy resolves/connects on our behalf, so a local public-IP check cannot
+        # constrain its destination. Fail closed instead of silently bypassing it or
+        # tunneling a hostname that the proxy could resolve differently.
+        proxies = urllib.request.getproxies()
+        if any(proxies.get(kind) for kind in ("http", "https", "all")):
+            raise ContractError("configured HTTP/HTTPS/ALL proxy unsupported by pinned-IP transport; no request sent")
         host = urllib.parse.urlsplit(safe_url(url)).hostname
-        addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
-        if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
-            raise ContractError("DNS resolved to a non-public address")
+        peer = _public_peer(host)
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect(),
+                                             _PinnedHTTPSHandler(host, peer, self._context))
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain;q=0.9", "Accept-Encoding": "identity"})
         try:
-            response = self.opener.open(req, timeout=15)
+            response = opener.open(req, timeout=15)
         except urllib.error.HTTPError as exc:
             response = exc
         with response:
@@ -333,8 +435,10 @@ class Collector:
                 robots = self._get(robots_url, sid, "robots", source["interval_seconds"], 512_000)
                 context["robots_url"], context["robots_http_status"] = robots_url, robots.status
                 if robots.status == 200:
-                    robots_text = robots.raw.decode("utf-8-sig", errors="strict")
-                    context["robots_text"], context["robots_sha256"] = robots_text, digest(robots.raw)
+                    context["robots_sha256"] = digest(robots.raw)
+                    context["robots_headers"] = {k: robots.headers[k] for k in ("content-type", "content-encoding") if k in robots.headers}
+                    robots_text = decode_robots(robots)
+                    context["robots_text"] = robots_text
                     allowed, crawl_delay, reason = robots_policy(robots_text, url)
                     if not allowed:
                         raise ContractError(reason)

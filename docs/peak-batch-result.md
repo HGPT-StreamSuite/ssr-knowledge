@@ -48,3 +48,9 @@ git diff --check
 - 未核對本機遊戲 build／道具數值；沒有啟動遊戲或進行玩家實測。官方行銷頁與 Wiki 的區域數資訊不同，本批不收該總數。
 - live 網站實際 429／503 恢復未遇到；重試、更新／去重、過期隔離由明確合成 transport 測試涵蓋，與真實 HTTP 200／政策阻擋分開回報。
 - 不含自動知識整理／LLM、全量圖鑑、跨 repo 交付、部署或正式知識批准；沒有新增套件、服務或隔離執行環境。
+
+## 靜態審核後的採集修正
+
+同一 PR 補上 robots HTTP 200 challenge／編碼的 fail-closed 驗證，以及 DNS 已驗證 public IP 與實際 TCP 連線的綁定。保留原 hostname 的 TLS SNI／憑證／HTTP Host 驗證；偵測到 HTTP／HTTPS／ALL proxy 時明確停止，不自動繞過或減弱 TLS。
+
+對應回歸測試確認不合法 robots 的 target requests=0、合法空 robots 仍可用、DNS public→private 改答不連私網；後續 robots 禁止新抓取不作舊資料授權撤回判定，既有 `allow_fetch=false` 隔離測試保留。新修訂的完整回歸與 11 則真實草稿未變更／未批准之雜湊核對，另存本機 evidence 並在 PR 記錄新 commit；前述初批結果不是新修訂的測試代替品。

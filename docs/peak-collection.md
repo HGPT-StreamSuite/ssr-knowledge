@@ -28,6 +28,12 @@ SQLite `knowledge.sqlite3` 將 raw HTML（BLOB）與正文、來源設定及政�
 
 robots 合併相同 agent 群組，支援 Allow／Disallow／`*`／`$`、Crawl-delay、Request-rate，保守同時檢查 SSRKnowledge、GPTBot、ChatGPT-User，並拒絕 `ai-input=no`、`search=no` 或 `use=reference` 的全文用途。不透過更換 UA 規避限制。robots 404／410 視為未設規則；403／5xx／無法讀取則關閉蒐集。robots 與政策結果寫入 audit。
 
+robots HTTP 200 也先驗證內容：拒絕 HTML／XML challenge、Access Denied 等非結構化錯誤、壓縮回應、不支援的 charset、無效 UTF-8／ASCII 及非文字控制字元；這些情況不請求 target page。只支援 text/plain（省略 Content-Type 時按純文字處理）、UTF-8／ASCII 及 identity encoding。合法空白、空檔案或只有註解的 robots 仍視為無限制。後續 robots Disallow 只阻止新採集，不自動推定舊資料使用權撤回；明確 manifest `allow_fetch=false` 的既有隔離保護維持不變。
+
+HTTPS 每次只解析 DNS 一次，整份答案若含非 public IP 就拒絕；TCP 只連到當次已驗證的 numeric IP，不再以 hostname 二次解析。HTTP Host、TLS SNI 及憑證名稱驗證仍用原 hostname，保留系統信任根、`CERT_REQUIRED` 與 `check_hostname=true`；沒有略過憑證錯誤的 fallback。單次 HTTP attempt 只嘗試一個已驗證 IP（雙棧優先 IPv4），外層重試仍受原上限限制。
+
+此 transport 不支援 proxy：若 `urllib.request.getproxies()` 偵測到 HTTP／HTTPS／ALL proxy，會在 DNS／TCP 前 fail closed；明確停用自動 proxy handler，也拒絕 CONNECT tunnel，不會靜默繞過既有 proxy 設定。需要 proxy 的環境須另行設計可核對目的 IP 的 transport，不能關閉 TLS 驗證以繞過。
+
 單頁最多 2 MB，robots 最多 512 KB，timeout 15 秒，沒有壓縮或非 HTML 內容支援。只對網路錯誤、429、500／502／503／504 最多嘗試 3 次；遵守 Retry-After 與已記錄的 origin cooldown。需要等超過 30 秒時回報 deferred，留待操作人員稍後重試；不立即重試、更換憑證或更換端點。cooldown 會跨程序保存。多個操作人員不應同時採集；此為小批單機工具。
 
 ## 草稿輸入與人工審核
@@ -73,6 +79,8 @@ git diff --check
 ```
 
 測試內 `Lunar Rope`／`月光繩`／`MOON ROPE`／`藍色落腳` 都是合成資料。測試涵蓋 source 政策與 robots 阻擋、失敗重試、403／轉址、持久限流、去重、來源更新過期、原文與條目完整性、中文／英文／別名／全文與 literal 搜尋、pending／rejected／approved 隔離，以及每個 CLI 呼叫都是新 Python 程序的批准／發布／讀回測試。這些結果不代表真實網站提供相同狀態或真實知識經過批准。
+
+HTTP 200 robots challenge／編碼錯誤的回歸測試逐項斷言 target requests=0，另驗空 robots 可正常取頁。DNS rebinding 測試以 public→private 改答的 synthetic resolver 加上記錄 numeric endpoint／HTTP wire bytes 的 synthetic socket，證明每次 get 只做一次 DNS lookup、TCP 只連已驗證 public IP、原 hostname 仍用於 Host／SNI；下一次解析變私網時不新增 socket。另涵蓋 IPv6、混合 public/private 答案、proxy、憑證驗證失敗及轉址。這些是 mock transport 回歸，不宣稱對真實網站實施 DNS 攻擊或錯誤憑證測試。
 
 真實資料驗收應在最終 commit 再執行，將 `git rev-parse HEAD`、完整 CLI argv／exit code／輸出及檔案雜湊存到 **checkout 外** evidence 檔案。實際網址、阻擋原因與不轉載正文的結果摘要可放在 PR；DB／原文快取／草稿／完整私人輸出不放 Git。
 
