@@ -64,7 +64,7 @@ def _robots_search_denied(metadata: dict[str, Any], url: str) -> bool:
 
 
 def _source_usable(source: dict[str, Any]) -> bool:
-    if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference"}:
+    if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text"}:
         return source["policy"].get("allow_import") is True
     return source["policy"]["allow_fetch"] is True
 
@@ -347,10 +347,11 @@ class Catalog:
         if digest(row["payload_json"]) != row["payload_sha256"]:
             raise ContractError("entry integrity mismatch")
         payload = json.loads(row["payload_json"])
+        from .names import display_names
         return {"revision_id": row["revision_id"], "status": row["status"], "created_at": row["created_at"],
                 "published_at": row["published_at"], "payload_sha256": row["payload_sha256"],
                 "review": json.loads(row["review_json"]) if row["review_json"] else None,
-                "stale": self._stale(row["revision_id"]), "entry": payload,
+                "stale": self._stale(row["revision_id"]), "entry": payload, "display_names": display_names(payload),
                 "sources": [self.snapshot(c["snapshot_id"]) for c in payload["citations"]]}
 
     def review(self, entry_id: str, revision: int, decision: str, reviewer: str,

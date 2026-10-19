@@ -11,12 +11,24 @@ from .item_table import parse_peak_items
 from .upload_source import import_text_source
 from .name_reference import import_name_reference
 from .community_names import match_community_names
+from .game_extraction import extract_installed_text, import_game_text
+from .game_localization import pair_saved_game_names
 
 
 def add_catalog_parser(commands: Any) -> None:
     parser = commands.add_parser("catalog", help="private PEAK source collection, drafts and independent search")
     parser.add_argument("--data-dir", help="outside every Git checkout; or SSR_KNOWLEDGE_DATA_DIR")
     actions = parser.add_subparsers(dest="action", required=True)
+    extract = actions.add_parser("extract-game-names", help="read one official installed TextAsset with a bounded cache; never launches/rewrites the game")
+    extract.add_argument("--game-dir", required=True)
+    extract.add_argument("--output-dir", required=True)
+    game = actions.add_parser("import-game-text", help="save extracted official item-name projections and original text privately")
+    game.add_argument("--file", required=True)
+    game.add_argument("--receipt", required=True)
+    pair = actions.add_parser("pair-game-names", help="pair official item keys/locales with exact Wiki English names; no fuzzy matches")
+    pair.add_argument("--en-snapshot-id", required=True)
+    pair.add_argument("--zh-snapshot-id", required=True)
+    pair.add_argument("--items-snapshot-id", required=True)
     upload = actions.add_parser("import-text-source", help="save explicitly supplied UTF-8 text and provenance; no HTTP")
     upload.add_argument("--file", required=True)
     upload.add_argument("--receipt", required=True)
@@ -72,7 +84,15 @@ def add_catalog_parser(commands: Any) -> None:
 
 
 def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
+    if args.action == "extract-game-names":
+        return extract_installed_text(args.game_dir, args.output_dir), 0
     with Catalog(args.data_dir) as store:
+        if args.action == "import-game-text":
+            return import_game_text(store, args.file, read_json(args.receipt)), 0
+        if args.action == "pair-game-names":
+            items = parse_peak_items(store.snapshot(args.items_snapshot_id, True)["body"])
+            return pair_saved_game_names(store.snapshot(args.en_snapshot_id, True), store.snapshot(args.zh_snapshot_id, True),
+                                         [r["item_name_en"] for r in items["items"]]), 0
         if args.action == "import-text-source":
             return import_text_source(store, args.file, read_json(args.receipt)), 0
         if args.action == "import-name-reference":

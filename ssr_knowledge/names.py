@@ -25,25 +25,35 @@ def name_records(entry: dict[str, Any]) -> list[dict[str, Any]]:
                                *(("alias", a) for a in entry["aliases"])]]
 
 
+def display_names(entry: dict[str, Any]) -> dict[str, Any]:
+    records = name_records(entry)
+    result = {r["locale"]: {"text": r["text"], "status": r["status"]} for r in records[:2]}
+    for locale, text in entry.get("names", {}).get("preferred", {}).items():
+        record = next(r for r in records if r["locale"] == locale and r["text"] == text and r["status"] == "game_ui_verified")
+        result[locale] = {"text": text, "status": record["status"]}
+    return result
+
+
 def validate_names(entry: dict[str, Any], snapshots: dict[str, dict[str, Any]]) -> None:
     if "names" not in entry:
         return
     value = entry["names"]
-    if not isinstance(value, dict) or set(value) != {"schema_version", "target_locale", "records"}:
+    if not isinstance(value, dict) or not {"schema_version", "target_locale", "records"} <= set(value) or set(value) - {"schema_version", "target_locale", "records", "preferred"}:
         raise ContractError("names needs schema_version, target_locale, records")
     if type(value["schema_version"]) is not int or value["schema_version"] != 1 or not isinstance(value["target_locale"], str) or value["target_locale"] not in {"zh-TW", "zh-CN"}:
         raise ContractError("names needs an explicit zh-TW or zh-CN target locale")
     records = value["records"]
     if not isinstance(records, list) or not 2 <= len(records) <= 100:
         raise ContractError("names must describe both display names and every alias; maximum 100 evidence records")
-    if any(not isinstance(r, dict) or set(r) != {"text", "locale", "role", "status", "citation", "basis"}
+    if any(not isinstance(r, dict) or not {"text", "locale", "role", "status", "citation", "basis"} <= set(r)
+           or set(r) - {"text", "locale", "role", "status", "citation", "basis", "game_key"}
            or any(not isinstance(r[k], str) for k in ("text", "locale", "role", "status", "basis")) for r in records):
         raise ContractError("invalid name record fields")
     if {r.get("text") for r in records[2:] if isinstance(r, dict)} != set(entry["aliases"]):
         raise ContractError("name records must cover every alias without adding unrelated labels")
     for index, record in enumerate(records):
-        if not isinstance(record, dict) or set(record) != {"text", "locale", "role", "status", "citation", "basis"}:
-            raise ContractError("invalid name record fields")
+        if "game_key" in record and (record["status"] != "game_ui_verified" or not isinstance(record["game_key"], str)):
+            raise ContractError("game_key only belongs to a verified game name")
         role, text = (("english", entry["name_en"]) if index == 0 else ("chinese", entry["name_zh"]) if index == 1 else ("alias", record["text"]))
         if record["text"] != text or record["role"] != role:
             raise ContractError("name records must match display names and aliases in order")
@@ -72,9 +82,20 @@ def validate_names(entry: dict[str, Any], snapshots: dict[str, dict[str, Any]]) 
             if (not isinstance(evidence, dict) or snapshot["source"]["source_type"] != "official" or snapshot["source"].get("language") != record["locale"]
                     or evidence.get("kind") != kind or evidence.get("locale") != record["locale"]):
                 raise ContractError("official names require matching source, locale and evidence scope; marketing is not game UI")
+            if status == "game_ui_verified":
+                from .game_localization import validate_game_record
+                validate_game_record(entry["name_en"], record, snapshot)
         if status == "community_mod_alias":
             evidence = snapshot["metadata"].get("name_evidence", {})
             if (not isinstance(evidence, dict) or snapshot["source"]["source_type"] not in {"wiki", "third_party_analysis"}
                     or snapshot["source"].get("language") != record["locale"]
                     or evidence.get("kind") != "community_mod" or evidence.get("locale") != record["locale"]):
                 raise ContractError("community mod aliases require matching nonofficial source/locale/scope")
+    if "preferred" in value:
+        preferred = value["preferred"]
+        if not isinstance(preferred, dict) or set(preferred) != {"en", value["target_locale"]}:
+            raise ContractError("preferred must explicitly name English and the target locale")
+        for locale, text in preferred.items():
+            candidates = {r["text"] for r in records if r["locale"] == locale and r["status"] == "game_ui_verified"}
+            if not isinstance(text, str) or candidates != {text}:
+                raise ContractError("preferred name needs unique verified evidence; do not choose an ambiguous alias")
