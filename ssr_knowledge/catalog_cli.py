@@ -9,6 +9,8 @@ from .catalog import Catalog
 from .contracts import read_json
 from .item_table import parse_peak_items
 from .upload_source import import_text_source
+from .name_reference import import_name_reference
+from .community_names import match_community_names
 
 
 def add_catalog_parser(commands: Any) -> None:
@@ -18,6 +20,12 @@ def add_catalog_parser(commands: Any) -> None:
     upload = actions.add_parser("import-text-source", help="save explicitly supplied UTF-8 text and provenance; no HTTP")
     upload.add_argument("--file", required=True)
     upload.add_argument("--receipt", required=True)
+    reference = actions.add_parser("import-name-reference", help="import reviewed pinned connector text or a bounded web excerpt, without HTTP")
+    reference.add_argument("--file", required=True)
+    reference.add_argument("--receipt", required=True)
+    community = actions.add_parser("match-community-names", help="exact casefold English matches; community mod names are not game UI verification")
+    community.add_argument("--snapshot-id", required=True)
+    community.add_argument("--items-snapshot-id", required=True)
     parse = actions.add_parser("parse-peak-items", help="parse a pinned copied Items table; no translation, review or network")
     parse.add_argument("--snapshot-id", required=True)
     collect = actions.add_parser("collect", help="collect only reviewed exact source URLs")
@@ -57,6 +65,7 @@ def add_catalog_parser(commands: Any) -> None:
     search.add_argument("--text", required=True)
     search.add_argument("--preview", action="store_true")
     search.add_argument("--limit", type=int, default=20)
+    search.add_argument("--names-only", action="store_true", help="exact bilingual name/alias after case, width and whitespace normalization; return all ambiguous IDs")
     events = actions.add_parser("events", help="private collection/review audit; may include robots text")
     events.add_argument("--limit", type=int, default=100)
     actions.add_parser("stats")
@@ -66,6 +75,15 @@ def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
     with Catalog(args.data_dir) as store:
         if args.action == "import-text-source":
             return import_text_source(store, args.file, read_json(args.receipt)), 0
+        if args.action == "import-name-reference":
+            return import_name_reference(store, args.file, read_json(args.receipt)), 0
+        if args.action == "match-community-names":
+            reference = store.snapshot(args.snapshot_id, True)
+            if reference["metadata"].get("name_evidence", {}).get("kind") != "community_mod":
+                raise ValueError("snapshot is not a community mod name reference")
+            items = parse_peak_items(store.snapshot(args.items_snapshot_id, True)["body"])
+            result = match_community_names(reference["body"], [row["item_name_en"] for row in items["items"]])
+            return result, 2 if result["unparsed_rows"] else 0
         if args.action == "parse-peak-items":
             result = parse_peak_items(store.snapshot(args.snapshot_id, True)["body"])
             return result, 2 if result["unparsed_rows"] or result["conflicting_duplicates"] else 0
@@ -107,7 +125,7 @@ def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
         if args.action == "publish-entry":
             return store.publish(args.entry_id, args.revision), 0
         if args.action == "search":
-            return store.search(args.text, preview=args.preview, limit=args.limit), 0
+            return store.search(args.text, preview=args.preview, limit=args.limit, names_only=args.names_only), 0
         if args.action == "events":
             if not 1 <= args.limit <= 1000:
                 raise ValueError("events limit must be 1 to 1000")

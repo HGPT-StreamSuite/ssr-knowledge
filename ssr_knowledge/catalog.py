@@ -64,7 +64,7 @@ def _robots_search_denied(metadata: dict[str, Any], url: str) -> bool:
 
 
 def _source_usable(source: dict[str, Any]) -> bool:
-    if source.get("acquisition", {}).get("kind") == "user_provided_text":
+    if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference"}:
         return source["policy"].get("allow_import") is True
     return source["policy"]["allow_fetch"] is True
 
@@ -242,7 +242,7 @@ class Catalog:
     def _validate_draft(self, value: Any) -> dict[str, Any]:
         fields = {"entry_id", "game", "category", "name_en", "name_zh", "aliases", "summary_zh",
                   "evidence_class", "citations", "editor", "game_version", "limitations"}
-        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details"}:
+        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details", "names"}:
             raise ContractError("draft must contain exactly the documented fields")
         identifier(value["entry_id"])
         if value["game"] != "PEAK:3527290" or value["category"] not in CATEGORIES:
@@ -268,6 +268,7 @@ class Catalog:
         details_pinned = "item_details" not in value
         if not details_pinned and value["category"] != "item":
             raise ContractError("item_details only belongs to item entries")
+        name_snapshots = {}
         for citation in value["citations"]:
             if not isinstance(citation, dict) or set(citation) != {"snapshot_id", "locator", "evidence_quote"}:
                 raise ContractError("citation needs snapshot_id, locator, evidence_quote")
@@ -275,6 +276,7 @@ class Catalog:
             # Short private anchors only. The program verifies location, not factual entailment.
             quote = required_text(citation["evidence_quote"], "evidence quote", 300)
             snap = self.snapshot(citation["snapshot_id"], include_body=True)
+            name_snapshots[citation["snapshot_id"]] = snap
             if quote not in snap["body"]:
                 raise ContractError("evidence_quote is not present in the pinned extracted body")
             if value["evidence_class"] == "official" and snap["source"]["source_type"] != "official":
@@ -286,6 +288,8 @@ class Catalog:
                 details_pinned = validate_item_details(value["item_details"], value["name_en"], snap["body"]) or details_pinned
         if not details_pinned:
             raise ContractError("item_details is not pinned to any cited source row")
+        from .names import validate_names
+        validate_names(value, name_snapshots)
         return value
 
     def import_drafts(self, drafts: Any) -> list[dict[str, Any]]:
@@ -380,19 +384,26 @@ class Catalog:
                             (utc_now(), canonical({"entry_id": entry_id, "revision_id": revision})))
         return self.entry(entry_id)
 
-    def search(self, text: str, *, preview: bool = False, limit: int = 20) -> dict[str, Any]:
+    def search(self, text: str, *, preview: bool = False, limit: int = 20, names_only: bool = False) -> dict[str, Any]:
         required_text(text, "search text", 200)
         if not 1 <= limit <= 100:
             raise ContractError("search limit must be between 1 and 100")
         needle = normalize(text)
-        # instr is a literal Unicode substring search, including 1/2-character Chinese words;
-        # it avoids FTS tokenization gaps and SQL/FTS wildcard interpretation. Small corpus only.
-        rows = self.db.execute("""SELECT r.entry_id,r.revision_id FROM entries e
+        from .names import name_key, name_records
+        compact = name_key(text)
+        # Small corpus: inspect separate labels rather than concatenate names or
+        # rewrite stored indexes. Legacy rows immediately gain the same lookup.
+        rows = self.db.execute("""SELECT r.entry_id,r.revision_id,r.payload_json,r.search_text FROM entries e
             JOIN entry_revisions r ON r.revision_id=e.current_revision
-            WHERE instr(r.search_text,?)>0 AND (? OR r.status='published') ORDER BY r.entry_id""", (needle, preview))
+            WHERE (? OR r.status='published') ORDER BY r.entry_id""", (preview,))
         matches = []
+        exact_ids = []
         observed_denials: dict[str, bool] = {}
         for row in rows:
+            labels = name_records(json.loads(row["payload_json"]))
+            exact_names = [n for n in labels if name_key(n["text"]) == compact]
+            if not exact_names and (names_only or needle not in row["search_text"]):
+                continue
             item = self.entry(row["entry_id"], row["revision_id"])
             if not preview and item["stale"]:
                 continue
@@ -423,11 +434,17 @@ class Catalog:
             item["entry"] = dict(item["entry"])
             item["entry"]["citations"] = [{k: v for k, v in c.items() if k != "evidence_quote"}
                                           for c in item["entry"]["citations"]]
+            item["name_matches"] = exact_names
+            item["match_type"] = "exact_name" if exact_names else "full_text"
+            if exact_names:
+                exact_ids.append(row["entry_id"])
             matches.append(item)
-            if len(matches) == limit:
-                break
+        matches.sort(key=lambda item: (item["match_type"] != "exact_name", item["entry"]["entry_id"]))
         return {"scope": "review_preview" if preview else "published", "query": text,
-                "status": "ok" if matches else "no_data", "matches": matches}
+                "status": "ok" if matches else "no_data", "matches": matches[:limit],
+                "total_matches": len(matches), "truncated": len(matches) > limit,
+                "name_resolution": {"status": "ambiguous" if len(exact_ids) > 1 else "unique" if exact_ids else "unresolved",
+                                    "entry_ids": exact_ids}, "names_only": names_only}
 
     def stats(self) -> dict[str, Any]:
         counts = {table: self.db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]

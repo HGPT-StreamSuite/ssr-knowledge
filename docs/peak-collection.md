@@ -72,7 +72,7 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog publish-e
 - 來源 URL 與 raw SHA／來源設定共同決定 immutable snapshot ID；相同內容不新增快照，新的 HTTP 取得事件仍保存。頁面 raw 更新產生新快照，舊快照仍可讀。
 - 條目由 canonical JSON SHA-256 去重。同一輸入不新增修訂或重新取得核准；舊內容重匯不會把 head 回滾。改動會新增待審修訂，舊修訂可由 `entry --revision N` 讀回。
 - 條目修訂、來源新快照或政策變更都可能使現有公開條目消失於正式查詢；採保守最新修訂策略，直到重做審核／發布。舊發布修訂仍保存在 DB，**不是**穩定版本公開快照服務；原有 JSON publish/query 仍提供獨立不可變版本。
-- 名稱、別名、摘要全文一起使用 NFKC、casefold 與空白正規化，再以 SQLite `instr` 做 literal substring；支援一字／二字繁中詞、英文與全形文字，沒有 SQL／FTS 語法解讀。不做簡繁轉換、斷詞、相關性排序、拼字修正或向量檢索；按 entry ID 排序、最多 100 筆。小批 corpus 是線性掃描。
+- 名稱／別名另外以NFKC、casefold及忽略空白作整個標籤匹配，`--names-only` 僅查此路徑並明示歧義。一般全文仍使用正規化後的literal substring；支援一字／二字繁中詞、英文與全形，不解讀SQL／FTS語法。精確名稱先列出，其餘按ID；不做簡繁轉換、斷詞、拼字修正或語意搜尋，最多顯示100筆。小批corpus線性掃描，詳見[雙語名稱與證據狀態](peak-bilingual-names.md)。
 - 來源 raw／正文與條目 payload 讀回會驗證雜湊。來源中的指令只當文字保存，沒有 shell、eval、工具呼叫或 LLM 執行路徑。
 
 正式搜尋還須遵守已觀察的用途限制：即使 `collect --purpose local_cache` 合法保存、manifest 的 search_index 為 allowed，引用快照的 robots 明示 `search=no` 仍排除整則條目。多來源摘要只要任一引用受限就整則隱藏，不自動裁切來源或洩漏受限片段。批准／發布是知識審核，不覆蓋來源用途。私人 `--preview`／`entry` 仍保留內容及原審核狀態供核對。

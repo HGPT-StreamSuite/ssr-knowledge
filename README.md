@@ -8,6 +8,8 @@
 
 蒐集不生成或批准知識。繁中摘要、英文原名、中文別名、分類與引用錨點由人員或 agent 編輯 JSON 後匯入，**全部預設 `pending_review`**。正式搜尋只讀已經明確審核及發布的當前修訂；待審、拒絕、來源變動後過期的條目只能在明確指定 `--preview` 的審查預覽出現。原有檔案工作流與 catalog 是各自獨立的儲存格式，沒有自動互相發布。
 
+道具名稱以目前官方遊戲內為優先；132件目前繁中仍是待核對暫譯，目標zh-TW。結構化名稱來源／語系與`search --names-only`明示別名命中及歧義，宣傳詞和歷史社群模組不冒充官方UI名稱。見[雙語名稱與檢索](docs/peak-bilingual-names.md)。
+
 ```powershell
 $env:PYTHONIOENCODING = 'utf-8'
 $env:SSR_KNOWLEDGE_DATA_DIR = 'C:\Users\User\Documents\SSRKnowledgeData'

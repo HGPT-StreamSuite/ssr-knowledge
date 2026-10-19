@@ -470,8 +470,8 @@ class Collector:
                                        "purpose": purpose, "collector_called_llm": False,
                                        "policy": source["policy"], "extractor_version": EXTRACTOR_VERSION}
             try:
-                if source.get("acquisition", {}).get("kind") == "user_provided_text":
-                    raise ContractError("user-provided text sources have no HTTP collection path")
+                if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference"}:
+                    raise ContractError("imported text sources have no HTTP collection path")
                 if not source["policy"]["allow_fetch"]:
                     raise ContractError("policy blocked: " + source["policy"]["notes"])
                 for requested in {"local_cache", purpose}:
