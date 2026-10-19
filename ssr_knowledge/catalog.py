@@ -44,6 +44,25 @@ def identifier(value: Any) -> str:
     return value
 
 
+def _robots_search_denied(metadata: dict[str, Any], url: str) -> bool:
+    """Only an observed explicit search=no denies search; missing signals stay unknown.
+
+    Reassess saved text for legacy snapshots with no structured assessment. This
+    is an offline parse of the actual fixed UA, not a new fetch or license check.
+    """
+    assessment = metadata.get("robots_assessment", {})
+    if isinstance(metadata.get("robots_text"), str):
+        from .acquisition import robots_assessment  # Runtime import avoids the collector/catalog cycle.
+        assessment = robots_assessment(metadata["robots_text"], url, "search_index")
+    if not isinstance(assessment, dict):
+        return False
+    signals = assessment.get("content_signals", {})
+    values = signals.get("search", []) if isinstance(signals, dict) else []
+    explicit_no = isinstance(values, list) and any(isinstance(v, str) and v.strip().lower() == "no" for v in values)
+    usage = assessment.get("usage_signals", {})
+    return explicit_no or (isinstance(usage, dict) and usage.get("search_index") == "prohibited")
+
+
 def resolve_data_dir(value: str | Path | None = None) -> Path:
     default = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "SSRKnowledge" / "data"
     path = Path(value or os.environ.get("SSR_KNOWLEDGE_DATA_DIR", str(default))).expanduser().resolve()
@@ -354,12 +373,34 @@ class Catalog:
             JOIN entry_revisions r ON r.revision_id=e.current_revision
             WHERE instr(r.search_text,?)>0 AND (? OR r.status='published') ORDER BY r.entry_id""", (needle, preview))
         matches = []
+        observed_denials: dict[str, bool] = {}
         for row in rows:
             item = self.entry(row["entry_id"], row["revision_id"])
             if not preview and item["stale"]:
                 continue
             if not preview and any(s["provenance"]["current_usage"]["search_index"]["status"] != "allowed" for s in item["sources"]):
                 continue
+            if not preview:
+                restricted = False
+                for source in item["sources"]:
+                    sid, url = source["source_id"], source["source"]["url"]
+                    if sid not in observed_denials:
+                        observed_denials[sid] = False
+                        # A repeated fetch may deduplicate identical raw bytes/config,
+                        # while its newly observed robots signals differ. Keep that
+                        # successful observation effective without rewriting a snapshot.
+                        for observation in self.db.execute("SELECT details_json FROM events WHERE source_id=? AND event='collection_result' ORDER BY event_id DESC", (sid,)):
+                            details = json.loads(observation[0])
+                            if "robots_assessment" in details or isinstance(details.get("robots_text"), str) or details.get("robots_http_status") in {404, 410}:
+                                observed_denials[sid] = _robots_search_denied(details, url)
+                                break
+                    if _robots_search_denied(source["metadata"], url) or observed_denials[sid]:
+                        restricted = True
+                        break
+                # Mixed-source summaries cannot be safely split automatically. Exclude
+                # the whole entry if any citation restricts search; preview stays private.
+                if restricted:
+                    continue
             # Formal results never return private evidence quotes or raw source body.
             item["entry"] = dict(item["entry"])
             item["entry"]["citations"] = [{k: v for k, v in c.items() if k != "evidence_quote"}

@@ -73,6 +73,10 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog publish-e
 - 名稱、別名、摘要全文一起使用 NFKC、casefold 與空白正規化，再以 SQLite `instr` 做 literal substring；支援一字／二字繁中詞、英文與全形文字，沒有 SQL／FTS 語法解讀。不做簡繁轉換、斷詞、相關性排序、拼字修正或向量檢索；按 entry ID 排序、最多 100 筆。小批 corpus 是線性掃描。
 - 來源 raw／正文與條目 payload 讀回會驗證雜湊。來源中的指令只當文字保存，沒有 shell、eval、工具呼叫或 LLM 執行路徑。
 
+正式搜尋還須遵守已觀察的用途限制：即使 `collect --purpose local_cache` 合法保存、manifest 的 search_index 為 allowed，引用快照的 robots 明示 `search=no` 仍排除整則條目。多來源摘要只要任一引用受限就整則隱藏，不自動裁切來源或洩漏受限片段。批准／發布是知識審核，不覆蓋來源用途。私人 `--preview`／`entry` 仍保留內容及原審核狀態供核對。
+
+robots 的 search 缺失、非 yes/no 或其他用途的 no 不視為搜尋禁止；search 的 yes/no 衝突仍記 unknown，但含明示 no 時保守排除搜尋。舊快照缺少結構化 assessment 時，離線重解讀已保存 robots；不新抓頁。也檢查來源最近一次有效 robots 觀察，因相同 HTML／設定去重可能不新增快照，不能丟掉新觀察到的 search=no。單純後續 robots 路徑 Disallow 與搜尋用途 no 分開，前者不自動撤回舊資料使用權。條款未知仍依既有 manifest gate 處理，與 robots 未知不是同一狀態。
+
 ## 來源追溯與手動更新
 
 `snapshot`／`sources`／`entry` 回傳 `provenance`：原始 URL、實際請求 URL、canonical URL 及依據、正文 selector、取得時間、來源更新時間及依據、宣告版本、頁面 revision（未知明示）、快照當時與目前用途狀態。引用另保留 locator／pinned snapshot。頁面 canonical link 只當 metadata，不跟隨或改綁來源；未取得時使用正規化請求 URL 並標明 page canonical unknown。來源修改時間可取頁面 modified metadata 或 HTTP Last-Modified，但不把 HTTP Date 當更新時間，不推定遊戲 build。舊快照沒有資訊的欄位讀回為 unknown／null，不補造歷史資料。
