@@ -13,7 +13,7 @@ from pathlib import Path
 from ssr_knowledge.acquisition import Collector
 from ssr_knowledge.catalog import Catalog, ROOT
 from ssr_knowledge.contracts import ContractError
-from ssr_knowledge.item_table import parse_peak_items
+from ssr_knowledge.item_table import parse_peak_items, validate_item_details
 from ssr_knowledge.upload_source import import_text_source
 from ssr_knowledge.store import utc_now
 from test_acquisition import Transport
@@ -108,6 +108,43 @@ class ItemUploadTests(unittest.TestCase):
         self.assertEqual(len(r["unparsed_rows"]), 1)
         self.assertEqual(r["items"][1]["statistics"]["hunger"]["state"], "unparsed")
         self.assertIsNone(r["items"][1]["statistics"]["hunger"]["value"])
+
+    def test_unparsed_table_rows_isolate_their_block_from_adjacent_items(self) -> None:
+        original = parse_peak_items(TEXT)["items"]
+        malformed_rows = (
+            "Broken\tBroken\tWeight ?\tn/a\tn/a\tn/a\t",
+            "Broken\tDifferent Name\tWeight 1\tn/a\tn/a\tn/a\t",
+            "Broken\tBroken\t???",
+            "Broken\tBroken\tWeight 1\tn/a",  # Recognizable row with an invalid cell count.
+        )
+        for bad_row in malformed_rows:
+            with self.subTest(row=bad_row):
+                block = bad_row + "\nAlpine\nOnly Broken owns QUARANTINED_NOTE.\n"
+                body = TEXT.replace("Lunar Cannon\tLunar Cannon", block + "Lunar Cannon\tLunar Cannon")
+                result = parse_peak_items(body)
+                self.assertEqual(len(result["unparsed_rows"]), 1)
+                self.assertEqual(result["unique_items"], 2)
+                self.assertEqual(result["items"][0], original[0])
+                following = result["items"][1]
+                self.assertEqual(following["notes_en"], original[1]["notes_en"])
+                self.assertEqual(following["biomes_en"], original[1]["biomes_en"])
+                self.assertEqual(following["source_row_sha256"], original[1]["source_row_sha256"])
+                self.assertEqual(following["row_start_line"], original[1]["row_start_line"] + 3)
+                trailing = parse_peak_items(TEXT.replace("Category:", block + "Category:"))
+                self.assertEqual(trailing["items"], original)
+
+    def test_validator_rejects_notes_contaminated_by_an_unparsed_row(self) -> None:
+        block = "Broken\tBroken\tWeight ?\tn/a\tn/a\tn/a\t\nAlpine\nOnly Broken owns QUARANTINED_NOTE.\n"
+        body = TEXT.replace("Lunar Cannon\tLunar Cannon", block + "Lunar Cannon\tLunar Cannon")
+        correct = parse_peak_items(TEXT)["items"][0]
+        details = {**correct, "notes_zh": ["合成翻譯，僅供測試。"] * len(correct["notes_en"]),
+                   "translation_status": "agent_translation_pending_review"}
+        self.assertTrue(validate_item_details(details, "Lunar Spool", body))
+        contaminated = copy.deepcopy(details)
+        contaminated["notes_en"].append("Only Broken owns QUARANTINED_NOTE.")
+        contaminated["notes_zh"].append("只屬於異常列的合成說明。")
+        with self.assertRaisesRegex(ContractError, "differs"):
+            validate_item_details(contaminated, "Lunar Spool", body)
 
     def test_raw_upload_provenance_no_http_and_repeat_is_unchanged(self) -> None:
         first = import_text_source(self.store, str(self.path), self.receipt)

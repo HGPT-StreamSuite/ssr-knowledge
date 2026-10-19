@@ -58,6 +58,8 @@ receipt 必須有 `source_id, source_url, title, original_filename, library_file
 
 草稿可有 `item_details`，內含 schema/parser版本、英文名、原始列行號／邏輯列雜湊、四項統計的 state/value/raw、地區／地點、全部英文說明及取得／限制／烹煮分類、逐句 `notes_zh`、issues 與 translation_status。每個解析欄位都必須與 pinned 正文重解析的同名列完全一致；不能把 n/a 改0或替換來源數字後匯入。每段英文須有一段編輯後繁中翻譯。
 
+無法解析的表格列也會切斷前一道具的範圍；該異常列及其後說明隔離到下一個表格列，不歸給相鄰道具。原始正文完整保留，異常列記於 `unparsed_rows`；CLI 遇到未解析列或名稱衝突以 exit code 2 提醒檢查，不替異常列猜資料。
+
 程式只做確定性解析、欄位核對、去重與保存。繁中名稱、別名、252段說明由agent編輯字典、嚴格數值模板與逐句翻譯後組裝，標為翻譯待審；沒有程式呼叫LLM。搜尋另外涵蓋道具的中英文說明及地區／地點。故事、同人內容與未提供的單品頁不補寫。
 
 ## 驗收邊界

@@ -56,16 +56,19 @@ def parse_peak_items(body: str) -> dict[str, Any]:
     if table is None:
         raise ContractError("PEAK copied Items table header not found")
     end = next((i for i in range(table + 1, len(lines)) if lines[i].startswith("Category:")), len(lines))
-    starts = [i for i in range(table + 1, end) if ROW.match(lines[i])]
-    if not starts:
+    # Every tabular row is a boundary, including malformed rows. Its following
+    # description stays quarantined until the next row, never on the prior item.
+    boundaries = [i for i in range(table + 1, end) if "\t" in lines[i]
+                  and not lines[i].startswith("Stamina\tPoison\tBiome\tLocation\tNotes")]
+    if not any(ROW.match(lines[i]) for i in boundaries):
         raise ContractError("no recognizable PEAK item rows")
     rows: list[dict[str, Any]] = []
     unparsed = []
-    for i in range(table + 1, end):
-        if "\t" in lines[i] and not ROW.match(lines[i]) and not lines[i].startswith("Stamina\tPoison\tBiome\tLocation\tNotes"):
-            unparsed.append({"line": i + 1, "text": lines[i], "reason": "unrecognized tabular row"})
-    for n, start in enumerate(starts):
-        stop = starts[n + 1] if n + 1 < len(starts) else end
+    for n, start in enumerate(boundaries):
+        stop = boundaries[n + 1] if n + 1 < len(boundaries) else end
+        if not ROW.match(lines[start]):
+            unparsed.append({"line": start + 1, "text": lines[start], "reason": "unrecognized tabular row"})
+            continue
         cells = lines[start].split("\t")
         while cells and cells[-1] == "":
             cells.pop()
