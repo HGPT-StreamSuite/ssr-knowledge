@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import difflib
 import json
 import os
 import shutil
@@ -15,7 +16,8 @@ from .store import ID_PATTERN, utc_now
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_TYPES = {"official", "wiki", "third_party_analysis", "player_test"}
-CATEGORIES = {"mechanic", "item", "status", "guide", "lore"}
+CATEGORIES = {"mechanic", "item", "status", "guide", "lore", "location", "creature", "achievement", "update", "support"}
+USAGE_PURPOSES = {"local_cache", "search_index", "ai_input", "ai_train"}
 
 
 def canonical(value: Any) -> str:
@@ -162,8 +164,41 @@ class Catalog:
         result = {key: row[key] for key in ("snapshot_id", "source_id", "fetched_at", "raw_sha256", "body_sha256")}
         result.update({"source": source, "metadata": json.loads(row["metadata_json"]),
                        "raw_bytes": len(row["raw"]), "body_characters": len(row["body"])})
+        meta = result["metadata"]
+        current = self.db.execute("SELECT config_json FROM sources WHERE source_id=?", (row["source_id"],)).fetchone()
+        current_source = json.loads(current[0])
+        unknown = {p: {"status": "unknown", "basis": "no purpose-specific review recorded"} for p in sorted(USAGE_PURPOSES)}
+        result["provenance"] = {
+            "original_url": source.get("original_url", source["url"]), "requested_url": source["url"],
+            "canonical_url": meta.get("canonical_url", source["url"]),
+            "canonical_basis": meta.get("canonical_basis", "normalized request URL; page canonical unknown"),
+            "body_locator": source["selector"], "acquired_at": row["fetched_at"],
+            "source_updated_at": meta.get("source_updated_at", meta.get("headers", {}).get("last-modified")),
+            "source_updated_basis": meta.get("source_updated_basis", "legacy HTTP Last-Modified" if meta.get("headers", {}).get("last-modified") else "unknown"),
+            "declared_version": source["declared_version"], "page_version": meta.get("page_dates", {}).get("mw:revisionId") or "unknown",
+            "snapshot_usage": source["policy"].get("uses", unknown),
+            "current_usage": current_source["policy"].get("uses", unknown),
+            "collector_called_llm": False, "url_is_not_proof_of_llm_reading": True,
+        }
         if include_body:
             result["body"] = row["body"]
+        return result
+
+    def compare_snapshots(self, before: str, after: str, include_body: bool = False) -> dict[str, Any]:
+        left, right = self.snapshot(before, include_body), self.snapshot(after, include_body)
+        if left["source_id"] != right["source_id"]:
+            raise ContractError("snapshot comparison requires the same source_id")
+        result = {"source_id": left["source_id"], "before": left, "after": right,
+                  "raw_changed": left["raw_sha256"] != right["raw_sha256"],
+                  "body_changed": left["body_sha256"] != right["body_sha256"],
+                  "config_changed": left["source"] != right["source"],
+                  "entry_revisions_created": 0, "review_state_changed": False}
+        if include_body:
+            diff = list(difflib.unified_diff(left.pop("body").splitlines(), right.pop("body").splitlines(),
+                                           fromfile=before, tofile=after, lineterm=""))
+            text = "\n".join(diff[:200])
+            result["private_body_diff"] = text[:50000]
+            result["diff_truncated"] = len(diff) > 200 or len(text) > 50000
         return result
 
     def sources(self) -> list[dict[str, Any]]:
@@ -181,13 +216,21 @@ class Catalog:
     def _validate_draft(self, value: Any) -> dict[str, Any]:
         fields = {"entry_id", "game", "category", "name_en", "name_zh", "aliases", "summary_zh",
                   "evidence_class", "citations", "editor", "game_version", "limitations"}
-        if not isinstance(value, dict) or set(value) != fields:
+        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy"}:
             raise ContractError("draft must contain exactly the documented fields")
         identifier(value["entry_id"])
         if value["game"] != "PEAK:3527290" or value["category"] not in CATEGORIES:
             raise ContractError("only PEAK:3527290 and documented categories are supported in this batch")
         if value["evidence_class"] not in SOURCE_TYPES:
             raise ContractError("invalid evidence_class")
+        if "taxonomy" in value:
+            tax = value["taxonomy"]
+            if not isinstance(tax, dict) or set(tax) != {"mapping_version", "source_path", "subtype"}:
+                raise ContractError("taxonomy needs mapping_version, source_path, subtype")
+            if tax["mapping_version"] != "peak-v1" or not isinstance(tax["source_path"], list) or not 1 <= len(tax["source_path"]) <= 10:
+                raise ContractError("invalid taxonomy mapping version or source_path")
+            for part in [tax["subtype"], *tax["source_path"]]:
+                required_text(part, "taxonomy text", 200)
         for field in ("name_en", "name_zh", "summary_zh", "editor", "game_version", "limitations"):
             required_text(value[field], field)
         if not isinstance(value["aliases"], list) or not 1 <= len(value["aliases"]) <= 30:
@@ -314,6 +357,8 @@ class Catalog:
         for row in rows:
             item = self.entry(row["entry_id"], row["revision_id"])
             if not preview and item["stale"]:
+                continue
+            if not preview and any(s["provenance"]["current_usage"]["search_index"]["status"] != "allowed" for s in item["sources"]):
                 continue
             # Formal results never return private evidence quotes or raw source body.
             item["entry"] = dict(item["entry"])

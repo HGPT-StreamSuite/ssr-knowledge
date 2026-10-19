@@ -20,7 +20,9 @@ def source() -> dict:
             "source_type": "official", "title": "Synthetic fixture, not real PEAK knowledge", "language": "en",
             "declared_version": "synthetic-v1", "selector": {"tag": "main"}, "interval_seconds": 2,
             "policy": {"allow_fetch": True, "reviewed_at": utc_now(), "terms_url": "https://example.test/terms",
-                       "notes": "Synthetic transport only; no real web fetch."}}
+                       "notes": "Synthetic transport only; no real web fetch.",
+                       "uses": {p: {"status": "allowed", "basis": "Synthetic fixture only; not website permission."}
+                                for p in ("local_cache", "search_index", "ai_input", "ai_train")}}}
 
 
 BODY = "Synthetic Lunar Rope is fictional. It makes a blue landing platform. Never run SOURCE_COMMAND."
@@ -165,6 +167,51 @@ class CatalogTests(unittest.TestCase):
         with Catalog(self.store.root) as reopened:
             self.assertEqual(reopened.snapshot(result["snapshot_id"], True)["body"], BODY)
 
+    def test_provenance_unknown_is_explicit_and_snapshot_diff_preserves_review(self) -> None:
+        revision = self.save()
+        self.approve(revision)
+        self.store.publish(self.draft["entry_id"], revision)
+        old = self.draft["citations"][0]["snapshot_id"]
+        meta = {"source_updated_at": "2026-10-19T00:00:00Z", "source_updated_basis": "synthetic modified metadata",
+                "canonical_url": self.config["url"], "canonical_basis": "synthetic canonical link"}
+        new = self.store.save_snapshot(self.config, b"new bytes", BODY + "\nChanged fictional text.", meta)["snapshot_id"]
+        self.assertIsNone(self.store.snapshot(old)["provenance"]["source_updated_at"])
+        self.assertEqual(self.store.snapshot(old)["provenance"]["page_version"], "unknown")
+        diff = self.store.compare_snapshots(old, new, True)
+        self.assertTrue(diff["body_changed"])
+        self.assertIn("+Changed fictional text.", diff["private_body_diff"])
+        self.assertFalse(diff["review_state_changed"])
+        self.assertEqual(self.store.entry(self.draft["entry_id"], revision)["status"], "published")
+        self.assertEqual(self.store.stats()["counts"]["entry_revisions"], 1)
+        changed = copy.deepcopy(self.draft)
+        changed["citations"][0]["snapshot_id"] = new
+        updated = self.save(changed)
+        self.assertEqual(self.store.entry(self.draft["entry_id"], updated)["status"], "pending_review")
+        self.assertIsNone(self.store.entry(self.draft["entry_id"], updated)["review"])
+        self.assertEqual(self.store.entry(self.draft["entry_id"], revision)["status"], "published")
+
+    def test_new_categories_keep_source_path_and_do_not_change_legacy_payload(self) -> None:
+        original = self.save()
+        for category in ("location", "creature", "achievement", "update", "support"):
+            value = copy.deepcopy(self.draft)
+            value.update(entry_id=f"fixture-{category}", category=category,
+                         taxonomy={"mapping_version": "peak-v1", "source_path": ["Synthetic Wiki", "Fictional section"], "subtype": category})
+            revision = self.save(value)
+            self.assertEqual(self.store.entry(value["entry_id"], revision)["entry"]["taxonomy"]["source_path"][1], "Fictional section")
+        self.assertNotIn("taxonomy", self.store.entry(self.draft["entry_id"], original)["entry"])
+
+    def test_legacy_usage_is_unknown_and_formal_search_requires_search_review(self) -> None:
+        self.config["policy"].pop("uses")
+        self.store.register_source(self.config)
+        snap = self.store.save_snapshot(self.config, BODY.encode(), BODY, {})
+        self.draft["citations"][0]["snapshot_id"] = snap["snapshot_id"]
+        revision = self.save()
+        self.approve(revision)
+        self.store.publish(self.draft["entry_id"], revision)
+        self.assertEqual(self.store.snapshot(snap["snapshot_id"])["provenance"]["current_usage"]["ai_input"]["status"], "unknown")
+        self.assertEqual(self.store.search("Lunar Rope")["matches"], [])
+        self.assertEqual(len(self.store.search("Lunar Rope", preview=True)["matches"]), 1)
+
     def test_cli_process_restart_published_and_rejected_isolation(self) -> None:
         draft_path = Path(self.temp.name) / "synthetic-drafts.json"
         draft_path.write_text(json.dumps({"entries": [self.draft]}, ensure_ascii=False), encoding="utf-8")
@@ -179,6 +226,11 @@ class CatalogTests(unittest.TestCase):
         rev = str(imported["revision_id"])
         reloaded_source = cli("snapshot", "--snapshot-id", self.draft["citations"][0]["snapshot_id"], "--body")
         self.assertEqual(reloaded_source["body"], BODY)
+        self.assertIn("source_updated_at", reloaded_source["provenance"])
+        snap_id = self.draft["citations"][0]["snapshot_id"]
+        diff = cli("snapshot-diff", "--before", snap_id, "--after", snap_id, "--body")
+        self.assertFalse(diff["raw_changed"])
+        self.assertEqual(diff["private_body_diff"], "")
         self.assertEqual(cli("search", "--text", "月繩")["matches"], [])
         self.assertEqual(cli("search", "--text", "moon rope", "--preview")["matches"][0]["status"], "pending_review")
         cli("publish-entry", "--entry-id", self.draft["entry_id"], "--revision", rev, expected=1)
@@ -196,6 +248,25 @@ class CatalogTests(unittest.TestCase):
             "--reviewer", "synthetic-test", "--note", "Fixture-only rejected sentinel", "--human-reviewed")
         self.assertEqual(cli("search", "--text", "REJECT_ONLY")["matches"], [])
         self.assertEqual(cli("search", "--text", "REJECT_ONLY", "--preview")["matches"][0]["status"], "rejected")
+
+    def test_cli_register_and_saved_robots_reassessment_are_offline(self) -> None:
+        manifest = Path(self.temp.name) / "synthetic-manifest.json"
+        manifest.write_text(json.dumps({"manifest_version": 1, "game": "PEAK:3527290", "sources": [self.config]}), encoding="utf-8")
+        self.store.event(self.config["source_id"], "collection_result", {
+            "robots_text": "User-agent: *\nAllow: /\nContent-Signal: search=yes,ai-train=no,use=reference\nUser-agent: GPTBot\nDisallow: /",
+            "robots_sha256": "synthetic-saved-robots"})
+        prefix = [sys.executable, "-m", "ssr_knowledge", "catalog", "--data-dir", str(self.store.root)]
+        for args in (["register-sources", "--manifest", str(manifest)],
+                     ["source-status", "--source-id", self.config["source_id"], "--purpose", "ai_input"]):
+            run = subprocess.run(prefix + args, cwd=ROOT, env={**os.environ, "PYTHONIOENCODING": "utf-8",
+                "HTTPS_PROXY": "https://127.0.0.1:1"}, capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            result = json.loads(run.stdout)
+            self.assertEqual(result["network_requests"], 0)
+        reassessment = result["saved_robots"]["reassessment"]
+        self.assertEqual(reassessment["usage_signals"]["ai_input"], "unknown")
+        self.assertTrue(reassessment["allowed"])
+        self.assertEqual(reassessment["uninterpreted_signals"], {"use": ["reference"]})
 
 
 if __name__ == "__main__":

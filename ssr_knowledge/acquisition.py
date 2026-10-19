@@ -19,11 +19,11 @@ from email.message import Message
 from html.parser import HTMLParser
 from typing import Any
 
-from .catalog import Catalog, SOURCE_TYPES, canonical, digest, identifier, required_text
+from .catalog import Catalog, SOURCE_TYPES, USAGE_PURPOSES, canonical, digest, identifier, required_text
 from .contracts import ContractError
 
 USER_AGENT = "SSRKnowledge/0.1 (+https://github.com/HGPT-StreamSuite/ssr-knowledge; local reference research)"
-ROBOTS_AGENTS = ("SSRKnowledge", "GPTBot", "ChatGPT-User")
+ROBOTS_PRODUCT = "SSRKnowledge"  # Fixed, honest identity; never impersonate another crawler.
 EXTRACTOR_VERSION = "html-subtree-v1"
 
 
@@ -60,10 +60,13 @@ def validate_manifest(value: Any) -> list[dict[str, Any]]:
     result = []
     for item in value["sources"]:
         fields = {"source_id", "url", "source_type", "title", "language", "declared_version", "selector", "policy", "interval_seconds"}
-        if not isinstance(item, dict) or set(item) != fields:
+        if not isinstance(item, dict) or not fields <= set(item) or set(item) - fields - {"original_url"}:
             raise ContractError("source must contain exactly the documented fields")
         item = json.loads(canonical(item))
         identifier(item["source_id"])
+        item.setdefault("original_url", item["url"])
+        if safe_url(item["original_url"]) != safe_url(item["url"]):
+            raise ContractError("original_url must normalize to the exact requested URL")
         item["url"] = safe_url(item["url"])
         if item["source_type"] not in SOURCE_TYPES or item["language"] != "en":
             raise ContractError("invalid source_type or language (this batch uses English)")
@@ -82,12 +85,18 @@ def validate_manifest(value: Any) -> list[dict[str, Any]]:
                 raise ContractError("selector attribute must be id or class")
             required_text(selector["value"], "selector value", 200)
         policy = item["policy"]
-        if not isinstance(policy, dict) or set(policy) != {"allow_fetch", "reviewed_at", "terms_url", "notes"}:
-            raise ContractError("policy requires allow_fetch, reviewed_at, terms_url, notes")
+        if not isinstance(policy, dict) or set(policy) != {"allow_fetch", "reviewed_at", "terms_url", "notes", "uses"}:
+            raise ContractError("policy requires allow_fetch, reviewed_at, terms_url, notes, uses")
         if not isinstance(policy["allow_fetch"], bool):
             raise ContractError("allow_fetch must be boolean")
         safe_url(policy["terms_url"])
         required_text(policy["notes"], "policy notes")
+        if not isinstance(policy["uses"], dict) or set(policy["uses"]) != USAGE_PURPOSES:
+            raise ContractError("policy uses must separately record local_cache, search_index, ai_input, ai_train")
+        for use in policy["uses"].values():
+            if not isinstance(use, dict) or set(use) != {"status", "basis"} or use["status"] not in {"allowed", "prohibited", "unknown"}:
+                raise ContractError("each purpose requires status allowed/prohibited/unknown and basis")
+            required_text(use["basis"], "purpose basis")
         try:
             reviewed = datetime.fromisoformat(policy["reviewed_at"])
             if reviewed.tzinfo is None or not 0 <= (datetime.now(timezone.utc) - reviewed).total_seconds() <= 31 * 86400:
@@ -100,12 +109,15 @@ def validate_manifest(value: Any) -> list[dict[str, Any]]:
     return result
 
 
-def robots_policy(text: str, url: str) -> tuple[bool, float, str]:
-    """Merge equal-specificity groups, support Allow, *, $, delay and request-rate.
+def robots_assessment(text: str, url: str, purpose: str = "local_cache") -> dict[str, Any]:
+    """Assess the actual fixed UA. Robots access and nonstandard usage signals stay separate.
 
-    Conservatively check the local bot and OpenAI user/training identities too;
-    renaming our user-agent never bypasses an explicit AI-agent restriction.
+    Missing signals are unknown, never a license grant or prohibition. Recognized
+    yes/no signals apply only to their own purpose; use=reference is preserved as
+    uninterpreted evidence. Operator-reviewed terms are a separate mandatory gate.
     """
+    if purpose not in USAGE_PURPOSES:
+        raise ContractError("unknown collection purpose")
     groups: list[tuple[list[str], list[tuple[str, str]]]] = []
     agents: list[str] = []
     rules: list[tuple[str, str]] = []
@@ -127,42 +139,65 @@ def robots_policy(text: str, url: str) -> tuple[bool, float, str]:
     parsed = urllib.parse.urlsplit(url)
     target = urllib.parse.quote(parsed.path, safe="/%:@!$&'()*+,;=-._~") + ("?" + parsed.query if parsed.query else "")
     delay = 0.0
-    for identity in ROBOTS_AGENTS:
-        matching = [(max((len(a) if a != "*" else 0) for a in aa if a == "*" or a in identity.lower()), rr)
-                    for aa, rr in groups if any(a == "*" or a in identity.lower() for a in aa)]
-        if not matching:
+    matching = [(max(len(a) if a != "*" else 0 for a in aa if a == "*" or a in ROBOTS_PRODUCT.lower()), aa, rr)
+                for aa, rr in groups if any(a == "*" or a in ROBOTS_PRODUCT.lower() for a in aa)]
+    specificity = max((score for score, _, _ in matching), default=-1)
+    best = (-1, True)
+    signals: dict[str, list[str]] = {}
+    applicable: list[str] = []
+    error = None
+    for score, aa, rr in matching:
+        if score != specificity:
             continue
-        specificity = max(score for score, _ in matching)
-        best = (-1, True)
-        for score, rr in matching:
-            if score != specificity:
-                continue
-            for key, val in rr:
-                if key in {"allow", "disallow"} and val:
-                    pattern = "^" + ".*".join(re.escape(p) for p in val.rstrip("$").split("*")) + ("$" if val.endswith("$") else "")
-                    if re.search(pattern, target):
-                        candidate = (len(val.replace("*", "").rstrip("$")), key == "allow")
-                        best = max(best, candidate)
-                elif key == "crawl-delay":
-                    try:
-                        delay = max(delay, float(val))
-                    except ValueError:
-                        return False, delay, "invalid crawl-delay; fail closed"
-                elif key == "request-rate":
-                    try:
+        applicable.extend(a for a in aa if a == "*" or a in ROBOTS_PRODUCT.lower())
+        for key, val in rr:
+            if key in {"allow", "disallow"} and val:
+                pattern = "^" + ".*".join(re.escape(p) for p in val.rstrip("$").split("*")) + ("$" if val.endswith("$") else "")
+                if re.search(pattern, target):
+                    best = max(best, (len(val.replace("*", "").rstrip("$")), key == "allow"))
+            elif key in {"crawl-delay", "request-rate"}:
+                try:
+                    if key == "crawl-delay":
+                        candidate = float(val)
+                    else:
                         requests, seconds = map(float, val.split("/"))
-                        delay = max(delay, seconds / requests)
-                    except (ValueError, ZeroDivisionError):
-                        return False, delay, "invalid request-rate; fail closed"
-                elif key == "content-signal":
-                    signals = dict(p.strip().lower().split("=", 1) for p in val.split(",") if "=" in p)
-                    if signals.get("ai-input") == "no" or signals.get("search") == "no" or signals.get("use") == "reference":
-                        return False, delay, "content signal restricts local full-text/AI use"
-        if not best[1]:
-            return False, delay, f"robots disallows {identity}"
-    if not 0 <= delay <= 3600:
-        return False, delay, "unsupported crawl-delay; fail closed"
-    return True, delay, "robots permits reviewed exact URL"
+                        if requests <= 0 or seconds < 0:
+                            raise ValueError
+                        candidate = seconds / requests
+                    if not 0 <= candidate <= 3600:
+                        raise ValueError
+                    delay = max(delay, candidate)
+                except (ValueError, ZeroDivisionError):
+                    error = f"invalid {key}; fail closed"
+            elif key == "content-signal":
+                for part in val.split(","):
+                    if "=" in part:
+                        name, value = (p.strip().lower() for p in part.split("=", 1))
+                        signals.setdefault(name, []).append(value)
+    usage = {p: "unknown" for p in USAGE_PURPOSES}
+    for name, mapped in {"search": "search_index", "ai-input": "ai_input", "ai-train": "ai_train"}.items():
+        values = set(signals.get(name, []))
+        if values == {"yes"}:
+            usage[mapped] = "allowed"
+        elif values == {"no"}:
+            usage[mapped] = "prohibited"
+    # An explicit no is enforced for the requested purpose even if conflicting
+    # signals leave its reported state unknown. It never blocks unrelated uses.
+    signal_name = {"search_index": "search", "ai_input": "ai-input", "ai_train": "ai-train"}.get(purpose)
+    explicit_no = signal_name is not None and "no" in signals.get(signal_name, [])
+    allowed = best[1] and not error and not explicit_no
+    reason = (error or (f"robots disallows {ROBOTS_PRODUCT}" if not best[1] else
+                       f"content signal prohibits {purpose}" if explicit_no else "robots access permits exact URL; terms still required"))
+    return {"allowed": bool(allowed), "crawl_delay": delay, "reason": reason,
+            "user_agent": USER_AGENT, "product_token": ROBOTS_PRODUCT,
+            "applicable_agents": sorted(set(applicable)), "content_signals": signals,
+            "usage_signals": usage, "purpose": purpose,
+            "uninterpreted_signals": {k: v for k, v in signals.items() if k not in {"search", "ai-input", "ai-train"}}}
+
+
+def robots_policy(text: str, url: str, purpose: str = "local_cache") -> tuple[bool, float, str]:
+    result = robots_assessment(text, url, purpose)
+    return result["allowed"], result["crawl_delay"], result["reason"]
 
 
 class BodyExtractor(HTMLParser):
@@ -177,6 +212,7 @@ class BodyExtractor(HTMLParser):
         self.parts: list[str] = []
         self.titles: list[str] = []
         self.meta: dict[str, str] = {}
+        self.canonical_urls: list[str] = []
         self.matched = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -194,6 +230,8 @@ class BodyExtractor(HTMLParser):
             name = values.get("property") or values.get("name") or ""
             if name in {"article:modified_time", "article:published_time", "dc.modified", "dc.date", "mw:revisionId"}:
                 self.meta[name] = values.get("content") or ""
+        if tag == "link" and "canonical" in (values.get("rel") or "").lower().split() and values.get("href"):
+            self.canonical_urls.append(values["href"])
         if active and not hidden and tag in self.BLOCK:
             self.parts.append("\n")
         if tag not in self.VOID:
@@ -421,15 +459,23 @@ class Collector:
                 return response
         raise AssertionError("unreachable")
 
-    def collect(self, sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def collect(self, sources: list[dict[str, Any]], purpose: str = "local_cache") -> list[dict[str, Any]]:
+        if purpose not in {"local_cache", "search_index", "ai_input"}:
+            raise ContractError("collector supports local_cache, search_index or ai_input; no training workflow")
         results = []
         for source in sources:
             self.catalog.register_source(source)
             sid, url = source["source_id"], source["url"]
-            context: dict[str, Any] = {"url": url, "policy": source["policy"], "extractor_version": EXTRACTOR_VERSION}
+            context: dict[str, Any] = {"url": url, "original_url": source.get("original_url", url),
+                                       "purpose": purpose, "collector_called_llm": False,
+                                       "policy": source["policy"], "extractor_version": EXTRACTOR_VERSION}
             try:
                 if not source["policy"]["allow_fetch"]:
                     raise ContractError("policy blocked: " + source["policy"]["notes"])
+                for requested in {"local_cache", purpose}:
+                    state = source["policy"].get("uses", {}).get(requested, {}).get("status", "unknown")
+                    if state != "allowed":
+                        raise ContractError(f"purpose {requested} is {state}; terms review required before collection")
                 parsed = urllib.parse.urlsplit(url)
                 robots_url = f"https://{parsed.netloc}/robots.txt"
                 robots = self._get(robots_url, sid, "robots", source["interval_seconds"], 512_000)
@@ -439,9 +485,11 @@ class Collector:
                     context["robots_headers"] = {k: robots.headers[k] for k in ("content-type", "content-encoding") if k in robots.headers}
                     robots_text = decode_robots(robots)
                     context["robots_text"] = robots_text
-                    allowed, crawl_delay, reason = robots_policy(robots_text, url)
-                    if not allowed:
-                        raise ContractError(reason)
+                    assessment = robots_assessment(robots_text, url, purpose)
+                    context["robots_assessment"] = assessment
+                    crawl_delay = assessment["crawl_delay"]
+                    if not assessment["allowed"]:
+                        raise ContractError(assessment["reason"])
                 elif robots.status in {404, 410}:
                     crawl_delay = 0
                     context["robots_note"] = "no robots file (404/410); operator-reviewed terms still apply"
@@ -467,9 +515,24 @@ class Collector:
                 parser.feed(html)
                 parser.close()
                 body = parser.body()
+                canonical_url = url
+                canonical_basis = "normalized_request_url; page canonical unknown"
+                if len(set(parser.canonical_urls)) == 1:
+                    try:
+                        canonical_url = safe_url(urllib.parse.urljoin(url, parser.canonical_urls[0]))
+                        canonical_basis = "page link (metadata only; not fetched)"
+                    except ContractError:
+                        canonical_basis = "normalized_request_url; invalid page canonical ignored"
+                source_updated = next((v for k, v in parser.meta.items() if k in {"article:modified_time", "dc.modified"} and v), None)
+                source_updated_basis = "page modified metadata" if source_updated else "unknown"
+                if not source_updated and response.headers.get("last-modified"):
+                    source_updated = response.headers["last-modified"]
+                    source_updated_basis = "HTTP Last-Modified; not independently verified publication time"
                 context.update({"headers": {k: response.headers[k] for k in ("content-type", "etag", "last-modified", "date") if k in response.headers},
                                 "title": "".join(parser.titles).strip(), "page_dates": parser.meta,
-                                "declared_version": source["declared_version"], "selector": source["selector"]})
+                                "declared_version": source["declared_version"], "selector": source["selector"],
+                                "canonical_url": canonical_url, "canonical_basis": canonical_basis,
+                                "source_updated_at": source_updated, "source_updated_basis": source_updated_basis})
                 result = self.catalog.save_snapshot(source, response.raw, body, context)
                 self.catalog.event(sid, "collection_result", {**context, **result})
                 results.append({**result, "url": url})

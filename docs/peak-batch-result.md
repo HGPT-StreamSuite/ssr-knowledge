@@ -1,14 +1,14 @@
-# 2026-10-19 PEAK 首批結果摘要
+# 2026-10-19 PEAK 有限批次結果摘要
 
 此檔只有不轉載正文的結果摘要；私人 DB、原文、草稿輸入及完整命令輸出保存在本機 checkout 外。最終 commit 與實跑紀錄由 PR 及私人 evidence 檔案對照。
 
-## 來源結果
+## 首批來源結果（歷史）
 
 | URL | 程式化結果與用途 |
 |---|---|
 | https://landfall.se/peak | HTTP 200；官方頁 HTML 與選定 main 正文保存成功 |
 | https://en.wikipedia.org/wiki/Peak_(video_game) | HTTP 200；Wiki HTML 與 mw-content-text 正文保存成功，保留來源及授權脈絡 |
-| https://peak.wiki.gg/wiki/Items | robots 200；content signal／AI 規則不允許此全文用途，未請求目標正文 |
+| https://peak.wiki.gg/wiki/Items | robots 200；舊本機 use=reference 一刀切及額外 AI UA 群組規則造成阻擋，未請求正文。這不是網站禁止所有本機搜尋；現已修正，條款與存取限制仍待確認 |
 | https://store.steampowered.com/app/3527290/PEAK/ | manifest 政策停用，未請求正文；app ID 僅作識別 |
 | https://steamcommunity.com/sharedfiles/filedetails/?id=3514106064 | manifest 政策停用，未請求正文 |
 | https://blast.tv/gaming/news/all-items-in-peak-explained | 條款不允許本次保存用途，未請求正文 |
@@ -17,7 +17,7 @@
 
 替代玩家攻略站 gameplay.tips 的公開 robots 可讀；對應 2025 年份的 `post-sitemap6.xml` 兩次回應 HTTP 500，其他已查公開索引未發現 PEAK 頁面。沒有繞用來源鏡像或補造玩家實測。
 
-## 待審條目與來源對照
+## 首批待審條目與來源對照（11 則）
 
 | 來源 | 條目 ID（草稿） | 分類 |
 |---|---|---|
@@ -28,7 +28,36 @@
 | wikipedia-peak | peak-rope-spool、peak-piton、peak-backpack | Wiki 道具彙整 |
 | wikipedia-peak | peak-poison、peak-hunger | Wiki 狀態彙整 |
 
-11 則全部為 **agent 閱讀實際快照後編輯**的繁中草稿，非蒐集程式自動翻譯或研究；全部保持 `pending_review`，沒有真實條目經 agent 核准或發布。中文名稱與別名為編輯暫譯，仍需人工核對。
+首批 11 則全部為 **agent 閱讀實際快照後編輯**的繁中草稿，非蒐集程式自動翻譯或研究；全部保持 `pending_review`，沒有真實條目經 agent 核准或發布。中文名稱與別名為編輯暫譯，仍需人工核對。以下新批結果取代首批數量作為當前狀態。
+
+## 用途修正後的新批與目前狀態
+
+目前 36 則真實條目、41 個不可變修訂，全部 pending_review、review=null、published_at=null。其中 6 official 為初批保留稿，30 wiki 來自 English Wikipedia。新批由 agent 編輯繁中 JSON 後匯入：25 則新增、5 則既有 Wiki 稿新增引用／分類修訂；不是採集器自動翻譯、研究或分類。初批 11 個修訂完整保留，未覆蓋審核結果。
+
+| 分類 | 當前條目數 | 不足 |
+|---|---:|---|
+| mechanic | 9 | 官方 2、Wiki 7；缺精確數值與本機實測 |
+| item | 5 | 官方 2、Wiki 3；非完整道具表，部分只確認存在 |
+| status | 5 | Wiki 飢餓、中毒、受傷、負重、極端溫度；缺療法／持續時間 |
+| guide | 1 | 官方合作建議，不能代稱獨立玩家攻略 |
+| lore | 1 | 初批官方故事前提，無同人／衍生故事 |
+| location | 10 | Wiki 區域概念／變體，不由此推算目前版本完整區域數 |
+| creature | 1 | Wiki Scoutmaster，不採約略觸發距離作已驗證數值 |
+| achievement | 1 | Wiki badges 制度概念，非逐項勳章條件表 |
+| update | 3 | Wiki 更新摘要，未核對官方 patch／遊戲 build |
+| support | 0 | 格式已支援，官方 FAQ 用途未確認 |
+
+登錄來源增為 10 筆 URL，只有 2 個來源曾保存正文：Landfall 初批 1 快照、Wikipedia 初批／本輪 2 快照。本輪僅重取 Wikipedia：robots／page HTTP 200，HTML 外框與初批不同，但正文 SHA 相同；用途設定不同也保留新快照。每條新稿保留 CC BY-SA 4.0 作者群來源、授權連結、改寫及暫譯告知。
+
+新發現 Landfall Fan Creation Policy 的 AI 文本／產品及訓練限制後，事實參考 AI 整理的適用範圍標為待確認，暫停新增官方正文與稿件；隱私政策不再作重用授權依據。FAQ／press kit URL 只登錄供 coverage，web 曾讀取但採集器尚未保存，素材不下載。原 6 則官方稿保留待審，因目前政策變更標為 stale，不在正式查詢出現。
+
+wiki.gg 正文仍 0 頁。修正後依固定 SSRKnowledge UA 重解讀保存的 robots：wildcard 允許該路徑，search=yes、ai-train=no；ai-input 缺失、use=reference 非標準，兩者保持未知。不同 UA 的 GPTBot 群組不強加於本 collector；沒有因此開始取頁，條款未知與先前觀察的 403 分開保留，不換 UA／代理／端點繞過。
+
+新預覽可查 `團長`／`Scoutmaster`／`童軍領隊` → peak-scoutmaster；`迷霧森林`／`Gloom` → peak-location-gloom（英文也可能命中更新摘要）；`徽章`／`Badges` → peak-badges；`復活`／`Teammate Revival` → peak-teammate-revival；`Final Ascent`／`最終攀登` → peak-update-final-ascent-update。真實正式查詢仍全部 no_data。沒有語意搜尋、FTS、斷詞、簡繁互轉或擴大量級效能驗證。
+
+來源讀回含 original／request／canonical URL、selector，引用含章節 locator／pinned snapshot；另記取得／來源更新時間（缺失為 null／unknown）、版本、raw／body hash 與當時／目前用途。snapshot-diff 比較 hash／設定／正文差異，不改條目或審核；後續匯入仍產生新待審修訂。URL 不是模型已讀取的證明。本次沒有排程／監控、跨 repo LLM 串接或自動驗證事實。
+
+詳細已收／待收／待整理／受限及自有分類對映見 [peak-coverage.md](peak-coverage.md)。wiki.gg 全站分母未知，不能報完成率；食物／烹調、全道具／生物／勳章、難度／數值／版本與獨立玩家攻略仍有缺口。
 
 ## 搜尋驗收輸入
 
@@ -53,4 +82,6 @@ git diff --check
 
 同一 PR 補上 robots HTTP 200 challenge／編碼的 fail-closed 驗證，以及 DNS 已驗證 public IP 與實際 TCP 連線的綁定。保留原 hostname 的 TLS SNI／憑證／HTTP Host 驗證；偵測到 HTTP／HTTPS／ALL proxy 時明確停止，不自動繞過或減弱 TLS。
 
-對應回歸測試確認不合法 robots 的 target requests=0、合法空 robots 仍可用、DNS public→private 改答不連私網；後續 robots 禁止新抓取不作舊資料授權撤回判定，既有 `allow_fetch=false` 隔離測試保留。新修訂的完整回歸與 11 則真實草稿未變更／未批准之雜湊核對，另存本機 evidence 並在 PR 記錄新 commit；前述初批結果不是新修訂的測試代替品。
+對應回歸測試確認不合法 robots 的 target requests=0、合法空 robots 仍可用、DNS public→private 改答不連私網；後續 robots 禁止新抓取不作舊資料授權撤回判定，既有 `allow_fetch=false` 隔離測試保留。當時 11 則未變更證據保留為歷史；用途修正後的 36 條目／41 修訂另存同一最終 commit 的完整驗收，不拿前版測試替代。
+
+新增回歸覆蓋 ai-train=no 不封普通搜尋、use=reference 不一刀切、ai-input=no 限制該用途、不同 UA 群組不混用、用途未知不取頁、缺失／矛盾訊號為 unknown，以及來源追溯／快照差異不改審核。每次 CLI 都是新程序、等待退出後再讀回；不是 OS 重開／斷電測試。完整命令／argv／exit／輸出／輸入雜湊只存私人 evidence，PR 列最終 head 與本機結果。遠端 CI 沒有結果就不宣稱通過。

@@ -13,20 +13,22 @@ SQLite `knowledge.sqlite3` 將 raw HTML（BLOB）與正文、來源設定及政�
 
 ## 受限來源 manifest
 
-`sources/peak.json` 只有 URL／selector／政策紀錄，沒有原文。`allow_fetch=false` 直接跳過網路；true 仍需每次通過 robots。`policy.reviewed_at` 必須含時區且距現在不超過 31 天；過期請重新檢查條款並記錄日期，不要機械式改日期。程式不會自動推定使用權。
+`sources/peak.json` 只有 URL／selector／政策紀錄，沒有原文。`allow_fetch=false` 直接跳過網路；true 仍需本機保存用途與本次用途均經審查為 allowed，再每次通過 robots。unknown 或 prohibited 都不擷取正文，原因仍分開記錄。`policy.reviewed_at` 必須含時區且距現在不超過 31 天；過期請重新檢查條款並記錄日期，不要機械式改日期。程式不會自動推定使用權。現在只有 Wikipedia 文字用途完成有限審查；Landfall 新政策發現與其他限制見 [coverage](peak-coverage.md)。
 
 每來源欄位固定為：
 
 | 欄位 | 用途 |
 |---|---|
-| `source_id`, `url`, `title` | 穩定 ID、確切 HTTPS URL、操作人員標題；ID 不可改綁另一 URL |
+| `source_id`, `url`, `title` | 穩定 ID、確切 HTTPS request URL、操作人員標題；ID 不可改綁另一 URL。選填 `original_url` 須正規化為同一請求 URL，否則拒絕 |
 | `source_type` | `official`、`wiki`、`third_party_analysis`、`player_test`；官方優先由審查者判定 |
 | `language`, `declared_version` | 本批英文；頁面／遊戲版本有未知就記 unknown，不推定最新版 |
 | `selector` | 一個 `main`／`article`／`div`／`section`／`body`，可加 `id` 或單一 class；必須恰好命中一個節點 |
 | `interval_seconds` | 每 origin 至少 2 秒，來源清單預設 3 秒 |
-| `policy` | `allow_fetch`、`reviewed_at`、`terms_url`、`notes`；人員審查記錄，不是授權證書 |
+| `policy` | `allow_fetch`、`reviewed_at`、`terms_url`、`notes`、`uses`；人員審查記錄，不是授權證書 |
 
-robots 合併相同 agent 群組，支援 Allow／Disallow／`*`／`$`、Crawl-delay、Request-rate，保守同時檢查 SSRKnowledge、GPTBot、ChatGPT-User，並拒絕 `ai-input=no`、`search=no` 或 `use=reference` 的全文用途。不透過更換 UA 規避限制。robots 404／410 視為未設規則；403／5xx／無法讀取則關閉蒐集。robots 與政策結果寫入 audit。
+`policy.uses` 必須分別包含 `local_cache`、`search_index`、`ai_input`、`ai_train`，各有 `{status: allowed|prohibited|unknown, basis: 審查依據}`。`collect --purpose local_cache|search_index|ai_input` 預設 local_cache；由於一定保存正文，local_cache 必須 allowed，本次指定用途也必須 allowed。沒有訓練流程。標成 ai_input 僅表示這次為該用途核對，不表示已呼叫模型或 LLM 已讀取。
+
+robots 合併實際固定 `SSRKnowledge/0.1` UA 的最具體適用群組，支援 Allow／Disallow／`*`／`$`、Crawl-delay、Request-rate。GPTBot／ChatGPT-User 是不同身份，不能強加其群組；也不能換 UA／代理／端點繞過已觀察 403。Content-Signal 是另記的非標準用途訊號：search、ai-input、ai-train 的 yes/no 只對應各自用途；缺失、非 yes/no、互相矛盾標 unknown。明示 no 只限制對應用途（矛盾中有 no 也保守停止該用途）。`use=reference` 原樣存為 uninterpreted，不一刀切拒絕；`ai-train=no` 不誤封一般搜尋或本機保存，`ai-input=no` 仍拒絕 AI-input 採集。沒有把 robots Allow／search=yes 當作條款重用授權。早期相反的規則已更正。robots 404／410 視為未設規則；403／5xx／無法讀取則關閉蒐集。robots、適用群組、各用途訊號與政策結果寫入 audit。
 
 robots HTTP 200 也先驗證內容：拒絕 HTML／XML challenge、Access Denied 等非結構化錯誤、壓縮回應、不支援的 charset、無效 UTF-8／ASCII 及非文字控制字元；這些情況不請求 target page。只支援 text/plain（省略 Content-Type 時按純文字處理）、UTF-8／ASCII 及 identity encoding。合法空白、空檔案或只有註解的 robots 仍視為無限制。後續 robots Disallow 只阻止新採集，不自動推定舊資料使用權撤回；明確 manifest `allow_fetch=false` 的既有隔離保護維持不變。
 
@@ -43,12 +45,13 @@ HTTPS 每次只解析 DNS 一次，整份答案若含非 public IP 就拒絕；T
 | 欄位 | 要求 |
 |---|---|
 | `entry_id`, `game` | 穩定 ID；`game` 固定 `PEAK:3527290` |
-| `category` | `mechanic`、`item`、`status`、`guide`、`lore` |
+| `category` | `mechanic`、`item`、`status`、`guide`、`lore`、`location`、`creature`、`achievement`、`update`、`support` |
 | `name_en`, `name_zh`, `aliases` | 英文原名、繁中顯示名、1–30 個別名；中文譯名需標明是否編輯暫譯 |
 | `summary_zh` | 編輯的繁中摘要，不複製長段正文 |
 | `evidence_class` | 同來源類別；`official` 只能引用 official，`player_test` 只能引用標為實測的來源，不能把推論變成實測 |
 | `editor`, `game_version`, `limitations` | 人／agent 編輯者、遊戲版本或 unknown、已知不足與衝突 |
 | `citations` | 1–20 個 `{snapshot_id, locator, evidence_quote}`；quote 限 300 字元，必須在已保存正文中逐字存在 |
+| `taxonomy`（選填） | `{mapping_version: "peak-v1", source_path: [原站分類／章節], subtype: 子類別}`；保留來源結構，不把 Wiki 分類視為自有 schema。對映是編輯步驟，未自動分類 |
 
 草稿可以綜合有依據的資料，但來源分類不是自動真實性保證。每個分類應區別官方設定、Wiki 彙整、第三方建議、玩家實測。故事／世界觀沒有核對來源就不建條目；不接受同人創作當設定。本批沒有執行遊戲，也不把任何資料標為本機玩家實測。
 
@@ -70,6 +73,22 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog publish-e
 - 名稱、別名、摘要全文一起使用 NFKC、casefold 與空白正規化，再以 SQLite `instr` 做 literal substring；支援一字／二字繁中詞、英文與全形文字，沒有 SQL／FTS 語法解讀。不做簡繁轉換、斷詞、相關性排序、拼字修正或向量檢索；按 entry ID 排序、最多 100 筆。小批 corpus 是線性掃描。
 - 來源 raw／正文與條目 payload 讀回會驗證雜湊。來源中的指令只當文字保存，沒有 shell、eval、工具呼叫或 LLM 執行路徑。
 
+## 來源追溯與手動更新
+
+`snapshot`／`sources`／`entry` 回傳 `provenance`：原始 URL、實際請求 URL、canonical URL 及依據、正文 selector、取得時間、來源更新時間及依據、宣告版本、頁面 revision（未知明示）、快照當時與目前用途狀態。引用另保留 locator／pinned snapshot。頁面 canonical link 只當 metadata，不跟隨或改綁來源；未取得時使用正規化請求 URL 並標明 page canonical unknown。來源修改時間可取頁面 modified metadata 或 HTTP Last-Modified，但不把 HTTP Date 當更新時間，不推定遊戲 build。舊快照沒有資訊的欄位讀回為 unknown／null，不補造歷史資料。
+
+```powershell
+# 只保存條款審查，不發出網路請求。
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog register-sources --manifest sources/peak.json
+# 重解讀已保存 robots；標示觀察時間，不宣稱目前存取或條款授權。
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog source-status --source-id peak-wikigg-items --purpose ai_input
+# 手動重取當前允許來源，再比較不可變快照（預設只有 metadata/hash）。
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog collect --manifest sources/peak.json --source-id wikipedia-peak --purpose ai_input
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog snapshot-diff --before OLD_ID --after NEW_ID
+```
+
+`snapshot-diff --body` 另回傳最多 200 行／50,000 字元的**私人正文差異**。比較本身不建立條目、不改動審核；人工／agent 核對後編輯新 JSON，重新匯入為新待審修訂。舊審核與發布紀錄不覆蓋、不自動沿用。來源頁 HTML 外框改變、正文不變也分開回報。沒有排程／背景監控、LLM 串接或自動驗證事實功能；來源 URL 存在不代表模型已讀取。未來使用正文前仍須核對當時用途與限制。
+
 ## 本機驗證與結果界線
 
 ```powershell
@@ -84,6 +103,6 @@ HTTP 200 robots challenge／編碼錯誤的回歸測試逐項斷言 target reque
 
 真實資料驗收應在最終 commit 再執行，將 `git rev-parse HEAD`、完整 CLI argv／exit code／輸出及檔案雜湊存到 **checkout 外** evidence 檔案。實際網址、阻擋原因與不轉載正文的結果摘要可放在 PR；DB／原文快取／草稿／完整私人輸出不放 Git。
 
-可重跑入口：先 `catalog collect --manifest sources/peak.json`，再用 `catalog sources` 取得新 snapshot ID，對照正文編輯私人草稿 JSON，`import-drafts` 後分別用 `search --preview` 和正式 `search` 驗證。若所有真實條目仍待審，正式查詢回傳 `no_data` 才是正確結果。
+可重跑入口：先確認 [coverage 與用途](peak-coverage.md)，只選當前允許來源，再以 `catalog collect --manifest sources/peak.json --source-id wikipedia-peak` 採集。用 `catalog sources` 取得新 snapshot ID，對照正文編輯私人草稿 JSON，`import-drafts` 後分別用 `search --preview` 和正式 `search` 驗證。若所有真實條目仍待審，正式查詢回傳 `no_data` 才是正確結果。即使已發布，來源的 search_index 用途未經審查為 allowed 也不出現在正式搜尋；預覽保留狀態供審查。
 
 本機遇到的 Steam、wiki.gg、BLAST、G2A、Polygon 限制在 manifest 記錄；未以其他來源鏡像規避。官方行銷頁與 Wiki 的區域數描述不同，本批不收區域總數或推定目前遊戲 build。所有中文別名為編輯暫譯，需人工確認。首批不是完整道具圖鑑或版本差異追蹤器。

@@ -12,15 +12,17 @@
 $env:PYTHONIOENCODING = 'utf-8'
 $env:SSR_KNOWLEDGE_DATA_DIR = 'C:\Users\User\Documents\SSRKnowledgeData'
 uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog stats
-# 先檢查 sources/peak.json 的政策與 reviewed_at，再明確執行網路蒐集。
-uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog collect --manifest sources/peak.json
+# 先檢查 coverage、用途與 reviewed_at；目前只有 Wikipedia 文字完成有限用途審查。
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog register-sources --manifest sources/peak.json
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog source-status --source-id peak-wikigg-items --purpose ai_input
+uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog collect --manifest sources/peak.json --source-id wikipedia-peak --purpose ai_input
 uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog sources
 uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog import-drafts --file C:\private\peak-drafts.json
 uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog search --text '背包' --preview
 uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog search --text 'Backpack'
 ```
 
-資料目錄也可由 `catalog --data-dir PATH` 指定；預設為 `%LOCALAPPDATA%\SSRKnowledge\data`，任何 Git checkout 內的路徑都會被拒絕。執行前檢查至少 50 MiB 可用空間。不安裝額外 SQLite extension、向量資料庫或模型。詳細資料格式、審核命令、更新語意、限制及本機驗證方式見 [PEAK 蒐集與驗收](docs/peak-collection.md)。
+資料目錄也可由 `catalog --data-dir PATH` 指定；預設為 `%LOCALAPPDATA%\SSRKnowledge\data`，任何 Git checkout 內的路徑都會被拒絕。執行前檢查至少 50 MiB 可用空間。不安裝額外 SQLite extension、向量資料庫或模型。詳細資料格式、審核命令、來源追溯及 `snapshot-diff` 手動更新見 [PEAK 蒐集與驗收](docs/peak-collection.md)；已收／待收／待整理／受限與 Wiki 對映見 [coverage](docs/peak-coverage.md)。URL 不等於 LLM 已讀取；用途未知不自動視為許可或禁止。
 
 ## 原有離線工作流
 

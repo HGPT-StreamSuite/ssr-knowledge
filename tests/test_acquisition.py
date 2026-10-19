@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from ssr_knowledge.acquisition import BodyExtractor, Collector, HttpTransport, Response, _PinnedHTTPSConnection, robots_policy, safe_url, validate_manifest
+from ssr_knowledge.acquisition import BodyExtractor, Collector, HttpTransport, Response, _PinnedHTTPSConnection, robots_assessment, robots_policy, safe_url, validate_manifest
 from ssr_knowledge.catalog import Catalog
 from ssr_knowledge.contracts import ContractError
 from test_catalog import seed, source
@@ -87,15 +87,74 @@ class AcquisitionTests(unittest.TestCase):
             with self.assertRaises(ContractError):
                 parser.body()
 
-    def test_robots_merge_groups_wildcards_allow_specificity_ai_identities(self) -> None:
+    def test_robots_merge_groups_wildcards_allow_specificity_actual_identity(self) -> None:
         rules = "User-agent: *\nDisallow: /private\nDisallow: /*?action=\nUser-agent: *\nAllow: /private/allowed$\nCrawl-delay: 5\n"
         self.assertFalse(robots_policy(rules, "https://example.test/private/secret")[0])
         self.assertTrue(robots_policy(rules, "https://example.test/private/allowed")[0])
         self.assertFalse(robots_policy(rules, "https://example.test/wiki?action=edit")[0])
         self.assertEqual(robots_policy(rules, "https://example.test/wiki")[1], 5)
-        self.assertFalse(robots_policy("User-agent: *\nAllow: /\nUser-agent: GPTBot\nDisallow: /", self.source["url"])[0])
-        self.assertFalse(robots_policy("User-agent: *\nContent-Signal: search=yes,ai-input=no", self.source["url"])[0])
-        self.assertFalse(robots_policy("User-agent: *\nContent-Signal: use=reference", self.source["url"])[0])
+        self.assertTrue(robots_policy("User-agent: *\nAllow: /\nUser-agent: GPTBot\nDisallow: /", self.source["url"])[0])
+        self.assertFalse(robots_policy("User-agent: SSRKnowledge\nDisallow: /", self.source["url"])[0])
+
+    def test_usage_signals_do_not_conflate_search_cache_input_or_training(self) -> None:
+        rules = "User-agent: *\nAllow: /\nContent-Signal: search=yes,ai-train=no,use=reference\nUser-agent: GPTBot\nDisallow: /"
+        for purpose in ("local_cache", "search_index", "ai_input"):
+            self.assertTrue(robots_policy(rules, self.source["url"], purpose)[0])
+        self.assertFalse(robots_policy(rules, self.source["url"], "ai_train")[0])
+        result = robots_assessment(rules, self.source["url"])
+        self.assertEqual(result["usage_signals"], {"local_cache": "unknown", "search_index": "allowed", "ai_input": "unknown", "ai_train": "prohibited"})
+        self.assertEqual(result["uninterpreted_signals"], {"use": ["reference"]})
+        self.assertEqual(result["applicable_agents"], ["*"])
+        transport = Transport([robots(rules.encode()), ok()])
+        collected = Collector(self.store, transport=transport, clock=self.clock.time, sleep=self.clock.sleep).collect([self.source], "search_index")[0]
+        self.assertEqual(collected["state"], "saved")
+        self.assertEqual(transport.calls, ["https://example.test/robots.txt", self.source["url"]])
+        self.assertTrue(robots_policy("User-agent: *\nContent-Signal: search=no", self.source["url"], "local_cache")[0])
+        self.assertFalse(robots_policy("User-agent: *\nContent-Signal: search=no", self.source["url"], "search_index")[0])
+
+    def test_explicit_ai_input_no_only_blocks_ai_input(self) -> None:
+        rules = b"User-agent: *\nContent-Signal: search=yes,ai-input=no"
+        transport = Transport([robots(rules)])
+        collector = Collector(self.store, transport=transport, clock=self.clock.time, sleep=self.clock.sleep)
+        result = collector.collect([self.source], purpose="ai_input")[0]
+        self.assertEqual(result["state"], "blocked_or_failed")
+        self.assertIn("ai_input", result["error"])
+        self.assertEqual(transport.calls, ["https://example.test/robots.txt"])
+        for purpose in ("local_cache", "search_index"):
+            self.assertTrue(robots_policy(rules.decode(), self.source["url"], purpose)[0])
+
+    def test_unknown_terms_never_requests_body_even_if_robots_would_allow(self) -> None:
+        config = copy.deepcopy(self.source)
+        config["policy"]["uses"]["local_cache"] = {"status": "unknown", "basis": "No cache permission established."}
+        result, transport = self.collect([], config)
+        self.assertEqual(transport.calls, [])
+        self.assertIn("unknown", result["error"])
+        config["policy"]["uses"]["local_cache"]["status"] = "allowed"
+        config["policy"]["uses"]["ai_input"]["status"] = "unknown"
+        transport = Transport([])
+        result = Collector(self.store, transport=transport).collect([config], purpose="ai_input")[0]
+        self.assertEqual(transport.calls, [])
+        self.assertIn("unknown", result["error"])
+
+    def test_missing_nonstandard_and_conflicting_signals_are_unknown(self) -> None:
+        self.assertEqual(set(robots_assessment("", self.source["url"])["usage_signals"].values()), {"unknown"})
+        result = robots_assessment("User-agent: *\nContent-Signal: ai-input=maybe,use=reference,search=yes\nContent-Signal: search=no", self.source["url"], "search_index")
+        self.assertEqual(result["usage_signals"]["ai_input"], "unknown")
+        self.assertEqual(result["usage_signals"]["search_index"], "unknown")
+        self.assertFalse(result["allowed"])
+
+    def test_provenance_extracts_canonical_and_never_treats_http_date_as_update(self) -> None:
+        html = HTML.replace(b"<head>", b'<head><link rel="canonical" href="/stable"/>')
+        result, transport = self.collect([robots(), ok(html)])
+        snap = self.store.snapshot(result["snapshot_id"])
+        self.assertEqual(snap["provenance"]["canonical_url"], "https://example.test/stable")
+        self.assertEqual(snap["provenance"]["source_updated_at"], "2026-10-19")
+        self.assertEqual(len(transport.calls), 2)  # canonical metadata is not a new request
+        html = HTML.replace(b'<meta property="article:modified_time" content="2026-10-19"/>', b'')
+        response = ok(html)
+        response.headers["date"] = "Mon, 19 Oct 2026 00:00:00 GMT"
+        result, _ = self.collect([robots(), response])
+        self.assertIsNone(self.store.snapshot(result["snapshot_id"])["provenance"]["source_updated_at"])
 
     def test_manifest_constraints_and_private_url_rejection(self) -> None:
         valid = {"manifest_version": 1, "game": "PEAK:3527290", "sources": [self.source]}

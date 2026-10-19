@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from .acquisition import Collector, validate_manifest
+from .acquisition import Collector, robots_assessment, validate_manifest
 from .catalog import Catalog
 from .contracts import read_json
 
@@ -16,10 +16,21 @@ def add_catalog_parser(commands: Any) -> None:
     collect = actions.add_parser("collect", help="collect only reviewed exact source URLs")
     collect.add_argument("--manifest", required=True)
     collect.add_argument("--source-id", help="collect just one manifest source")
+    collect.add_argument("--purpose", choices=("local_cache", "search_index", "ai_input"), default="local_cache",
+                         help="terms must allow local caching and this purpose; never calls an LLM")
+    register = actions.add_parser("register-sources", help="save reviewed source policies without any network requests")
+    register.add_argument("--manifest", required=True)
+    status = actions.add_parser("source-status", help="current purpose review plus re-evaluation of saved robots; no network")
+    status.add_argument("--source-id", required=True)
+    status.add_argument("--purpose", choices=("local_cache", "search_index", "ai_input", "ai_train"), default="local_cache")
     actions.add_parser("sources", help="source metadata and pinned snapshots, without body")
     snapshot = actions.add_parser("snapshot", help="inspect a private source snapshot")
     snapshot.add_argument("--snapshot-id", required=True)
     snapshot.add_argument("--body", action="store_true", help="include private extracted text for review")
+    diff = actions.add_parser("snapshot-diff", help="compare pinned versions without changing any entries or reviews")
+    diff.add_argument("--before", required=True)
+    diff.add_argument("--after", required=True)
+    diff.add_argument("--body", action="store_true", help="include bounded private unified body diff")
     drafts = actions.add_parser("import-drafts", help="validate and store operator/agent-edited summaries; does not generate or approve them")
     drafts.add_argument("--file", required=True)
     entry = actions.add_parser("entry", help="inspect a private draft or a historical revision")
@@ -46,18 +57,35 @@ def add_catalog_parser(commands: Any) -> None:
 
 def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
     with Catalog(args.data_dir) as store:
-        if args.action == "collect":
+        if args.action in {"collect", "register-sources"}:
             sources = validate_manifest(read_json(args.manifest))
+            if args.action == "register-sources":
+                for source in sources:
+                    store.register_source(source)
+                store.event(None, "source_policy_registration", {"source_ids": [s["source_id"] for s in sources], "network_requests": 0})
+                return {"registered": [s["source_id"] for s in sources], "network_requests": 0}, 0
             if args.source_id:
                 sources = [s for s in sources if s["source_id"] == args.source_id]
                 if not sources:
                     raise ValueError("source-id not present in manifest")
-            results = Collector(store).collect(sources)
+            results = Collector(store).collect(sources, args.purpose)
             return {"results": results}, 2 if any(r["state"] == "blocked_or_failed" for r in results) else 0
         if args.action == "sources":
             return {"sources": store.sources()}, 0
+        if args.action == "source-status":
+            source = next((s for s in store.sources() if s["config"]["source_id"] == args.source_id), None)
+            if source is None:
+                raise ValueError("source not found")
+            saved = next((e for e in store.history(1000) if e["source_id"] == args.source_id and "robots_text" in e["details"]), None)
+            return {"source": source, "purpose": args.purpose, "network_requests": 0,
+                    "saved_robots": None if saved is None else {
+                        "observed_at": saved["at"], "robots_sha256": saved["details"].get("robots_sha256"),
+                        "reassessment": robots_assessment(saved["details"]["robots_text"], source["config"]["url"], args.purpose)},
+                    "note": "Saved robots are historical access evidence, not a license or proof of current access; no target requested or LLM called."}, 0
         if args.action == "snapshot":
             return store.snapshot(args.snapshot_id, args.body), 0
+        if args.action == "snapshot-diff":
+            return store.compare_snapshots(args.before, args.after, args.body), 0
         if args.action == "import-drafts":
             return {"results": store.import_drafts(read_json(args.file))}, 0
         if args.action == "entry":
