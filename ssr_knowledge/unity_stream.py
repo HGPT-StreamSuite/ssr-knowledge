@@ -106,4 +106,3 @@ class BundleWindow(io.RawIOBase):
         if size<0: raise ValueError("whole-resource reads disabled")
         size=min(size,self.node['size']-self.position)
         data=self.bundle.read(self.node['offset']+self.position,size);self.position+=len(data);return data
-
