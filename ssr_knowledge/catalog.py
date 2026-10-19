@@ -1,0 +1,335 @@
+"""Private SQLite catalog. Source text is data; it is never executable input."""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import unicodedata
+from pathlib import Path
+from typing import Any
+
+from .contracts import ContractError
+from .store import ID_PATTERN, utc_now
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE_TYPES = {"official", "wiki", "third_party_analysis", "player_test"}
+CATEGORIES = {"mechanic", "item", "status", "guide", "lore"}
+
+
+def canonical(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def digest(value: bytes | str) -> str:
+    return hashlib.sha256(value.encode("utf-8") if isinstance(value, str) else value).hexdigest()
+
+
+def normalize(value: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
+
+
+def required_text(value: Any, label: str, maximum: int = 4000) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+        raise ContractError(f"{label}: nonempty string up to {maximum} characters required")
+    return value
+
+
+def identifier(value: Any) -> str:
+    if not isinstance(value, str) or not ID_PATTERN.fullmatch(value):
+        raise ContractError("invalid identifier")
+    return value
+
+
+def resolve_data_dir(value: str | Path | None = None) -> Path:
+    default = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "SSRKnowledge" / "data"
+    path = Path(value or os.environ.get("SSR_KNOWLEDGE_DATA_DIR", str(default))).expanduser().resolve()
+    if path == ROOT or ROOT in path.parents:
+        raise ContractError("catalog data directory must be outside the Git checkout")
+    # Also protect any other checkout, including linked worktrees with a .git file.
+    if any((parent / ".git").exists() for parent in (path, *path.parents)):
+        raise ContractError("catalog data directory must be outside every Git checkout")
+    return path
+
+
+class Catalog:
+    """One local writer at a time; no server, FTS extension or model required."""
+
+    def __init__(self, data_dir: str | Path | None = None) -> None:
+        self.root = resolve_data_dir(data_dir)
+        existing = self.root
+        while not existing.exists():
+            existing = existing.parent
+        self.free_bytes = shutil.disk_usage(existing).free
+        if self.free_bytes < 50 * 1024 * 1024:
+            raise ContractError("at least 50 MiB free space required for the catalog")
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.db = sqlite3.connect(self.root / "knowledge.sqlite3", timeout=15)
+        self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA foreign_keys = ON")
+        version = self.db.execute("PRAGMA user_version").fetchone()[0]
+        if version not in (0, 1):
+            self.close()
+            raise ContractError("unsupported catalog schema version")
+        self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS sources (
+                source_id TEXT PRIMARY KEY, url TEXT UNIQUE NOT NULL,
+                config_json TEXT NOT NULL, latest_snapshot TEXT
+            );
+            CREATE TABLE IF NOT EXISTS snapshots (
+                snapshot_id TEXT PRIMARY KEY, source_id TEXT NOT NULL REFERENCES sources,
+                fetched_at TEXT NOT NULL, raw BLOB NOT NULL, raw_sha256 TEXT NOT NULL,
+                body TEXT NOT NULL, body_sha256 TEXT NOT NULL, metadata_json TEXT NOT NULL,
+                config_json TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS events (
+                event_id INTEGER PRIMARY KEY, at TEXT NOT NULL, source_id TEXT,
+                event TEXT NOT NULL, details_json TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS throttles (origin TEXT PRIMARY KEY, next_at REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS entries (entry_id TEXT PRIMARY KEY, current_revision INTEGER);
+            CREATE TABLE IF NOT EXISTS entry_revisions (
+                revision_id INTEGER PRIMARY KEY, entry_id TEXT NOT NULL REFERENCES entries,
+                payload_json TEXT NOT NULL, payload_sha256 TEXT NOT NULL,
+                search_text TEXT NOT NULL, created_at TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('pending_review','approved','rejected','published')),
+                review_json TEXT, published_at TEXT, UNIQUE(entry_id, payload_sha256)
+            );
+            CREATE TABLE IF NOT EXISTS citations (
+                revision_id INTEGER NOT NULL REFERENCES entry_revisions,
+                snapshot_id TEXT NOT NULL REFERENCES snapshots, PRIMARY KEY(revision_id,snapshot_id)
+            );
+            CREATE INDEX IF NOT EXISTS citations_snapshot ON citations(snapshot_id);
+            PRAGMA user_version = 1;
+        """)
+
+    def close(self) -> None:
+        self.db.close()
+
+    def __enter__(self) -> Catalog:
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        self.close()
+
+    def event(self, source_id: str | None, event: str, details: dict[str, Any]) -> dict[str, Any]:
+        result = {"at": utc_now(), "source_id": source_id, "event": event, **details}
+        with self.db:
+            self.db.execute("INSERT INTO events(at,source_id,event,details_json) VALUES(?,?,?,?)",
+                            (result["at"], source_id, event, canonical(details)))
+        return result
+
+    def register_source(self, source: dict[str, Any]) -> None:
+        existing = self.db.execute("SELECT url FROM sources WHERE source_id=?", (source["source_id"],)).fetchone()
+        if existing and existing["url"] != source["url"]:
+            raise ContractError("source_id URL cannot change; use a new source_id")
+        try:
+            with self.db:
+                self.db.execute("""INSERT INTO sources(source_id,url,config_json) VALUES(?,?,?)
+                    ON CONFLICT(source_id) DO UPDATE SET config_json=excluded.config_json""",
+                    (source["source_id"], source["url"], canonical(source)))
+        except sqlite3.IntegrityError as exc:
+            raise ContractError("URL already registered with another source_id") from exc
+
+    def save_snapshot(self, source: dict[str, Any], raw: bytes, body: str,
+                      metadata: dict[str, Any]) -> dict[str, Any]:
+        """Called by the collector; raw bytes and extracted text stay inside SQLite."""
+        required_text(body, "extracted body", 2_000_000)
+        config = canonical(source)
+        raw_hash, body_hash = digest(raw), digest(body)
+        sid = digest(source["url"] + "\0" + raw_hash + "\0" + digest(config))
+        old = self.db.execute("SELECT latest_snapshot FROM sources WHERE source_id=?", (source["source_id"],)).fetchone()
+        if old is None:
+            raise ContractError("source not registered")
+        with self.db:
+            self.db.execute("""INSERT OR IGNORE INTO snapshots VALUES(?,?,?,?,?,?,?,?,?)""",
+                            (sid, source["source_id"], utc_now(), raw, raw_hash, body, body_hash,
+                             canonical(metadata), config))
+            self.db.execute("UPDATE sources SET latest_snapshot=? WHERE source_id=?", (sid, source["source_id"]))
+        return {"source_id": source["source_id"], "snapshot_id": sid,
+                "state": "unchanged" if old["latest_snapshot"] == sid else "saved",
+                "raw_sha256": raw_hash, "body_sha256": body_hash,
+                "raw_bytes": len(raw), "body_characters": len(body)}
+
+    def snapshot(self, snapshot_id: str, include_body: bool = False) -> dict[str, Any]:
+        row = self.db.execute("SELECT * FROM snapshots WHERE snapshot_id=?", (snapshot_id,)).fetchone()
+        if row is None:
+            raise ContractError("snapshot not found")
+        if digest(row["raw"]) != row["raw_sha256"] or digest(row["body"]) != row["body_sha256"]:
+            raise ContractError("snapshot integrity mismatch")
+        source = json.loads(row["config_json"])
+        result = {key: row[key] for key in ("snapshot_id", "source_id", "fetched_at", "raw_sha256", "body_sha256")}
+        result.update({"source": source, "metadata": json.loads(row["metadata_json"]),
+                       "raw_bytes": len(row["raw"]), "body_characters": len(row["body"])})
+        if include_body:
+            result["body"] = row["body"]
+        return result
+
+    def sources(self) -> list[dict[str, Any]]:
+        result = []
+        for row in self.db.execute("SELECT * FROM sources ORDER BY source_id"):
+            result.append({"config": json.loads(row["config_json"]),
+                           "latest": self.snapshot(row["latest_snapshot"]) if row["latest_snapshot"] else None})
+        return result
+
+    def history(self, limit: int = 100) -> list[dict[str, Any]]:
+        return [{"event_id": row["event_id"], "at": row["at"], "source_id": row["source_id"],
+                 "event": row["event"], "details": json.loads(row["details_json"])}
+                for row in self.db.execute("SELECT * FROM events ORDER BY event_id DESC LIMIT ?", (limit,))]
+
+    def _validate_draft(self, value: Any) -> dict[str, Any]:
+        fields = {"entry_id", "game", "category", "name_en", "name_zh", "aliases", "summary_zh",
+                  "evidence_class", "citations", "editor", "game_version", "limitations"}
+        if not isinstance(value, dict) or set(value) != fields:
+            raise ContractError("draft must contain exactly the documented fields")
+        identifier(value["entry_id"])
+        if value["game"] != "PEAK:3527290" or value["category"] not in CATEGORIES:
+            raise ContractError("only PEAK:3527290 and documented categories are supported in this batch")
+        if value["evidence_class"] not in SOURCE_TYPES:
+            raise ContractError("invalid evidence_class")
+        for field in ("name_en", "name_zh", "summary_zh", "editor", "game_version", "limitations"):
+            required_text(value[field], field)
+        if not isinstance(value["aliases"], list) or not 1 <= len(value["aliases"]) <= 30:
+            raise ContractError("at least one alias required; maximum 30")
+        for alias in value["aliases"]:
+            required_text(alias, "alias", 200)
+        if not isinstance(value["citations"], list) or not 1 <= len(value["citations"]) <= 20:
+            raise ContractError("one to twenty pinned citations required")
+        for citation in value["citations"]:
+            if not isinstance(citation, dict) or set(citation) != {"snapshot_id", "locator", "evidence_quote"}:
+                raise ContractError("citation needs snapshot_id, locator, evidence_quote")
+            required_text(citation["locator"], "citation locator", 500)
+            # Short private anchors only. The program verifies location, not factual entailment.
+            quote = required_text(citation["evidence_quote"], "evidence quote", 300)
+            snap = self.snapshot(citation["snapshot_id"], include_body=True)
+            if quote not in snap["body"]:
+                raise ContractError("evidence_quote is not present in the pinned extracted body")
+            if value["evidence_class"] == "official" and snap["source"]["source_type"] != "official":
+                raise ContractError("official claims require official citations")
+            if value["evidence_class"] == "player_test" and snap["source"]["source_type"] != "player_test":
+                raise ContractError("player_test requires a player-test source, not an inferred test")
+        return value
+
+    def import_drafts(self, drafts: Any) -> list[dict[str, Any]]:
+        if not isinstance(drafts, dict) or set(drafts) != {"entries"} or not isinstance(drafts["entries"], list):
+            raise ContractError("draft bundle must be an object containing entries array")
+        if not 1 <= len(drafts["entries"]) <= 100:
+            raise ContractError("import one to one hundred drafts at a time")
+        values = [self._validate_draft(item) for item in drafts["entries"]]
+        ids = [item["entry_id"] for item in values]
+        if len(ids) != len(set(ids)):
+            raise ContractError("entry_id must be unique within an import")
+        results = []
+        with self.db:
+            for value in values:
+                payload = canonical(value)
+                old = self.db.execute("SELECT revision_id,status FROM entry_revisions WHERE entry_id=? AND payload_sha256=?",
+                                      (value["entry_id"], digest(payload))).fetchone()
+                if old:
+                    results.append({"entry_id": value["entry_id"], "revision_id": old["revision_id"],
+                                    "state": "unchanged", "status": old["status"]})
+                    continue
+                self.db.execute("INSERT OR IGNORE INTO entries(entry_id) VALUES(?)", (value["entry_id"],))
+                search = normalize(" ".join([value["name_en"], value["name_zh"], *value["aliases"], value["summary_zh"]]))
+                cur = self.db.execute("""INSERT INTO entry_revisions(entry_id,payload_json,payload_sha256,search_text,created_at,status)
+                    VALUES(?,?,?,?,?,'pending_review')""", (value["entry_id"], payload, digest(payload), search, utc_now()))
+                revision = cur.lastrowid
+                self.db.execute("UPDATE entries SET current_revision=? WHERE entry_id=?", (revision, value["entry_id"]))
+                self.db.executemany("INSERT OR IGNORE INTO citations VALUES(?,?)",
+                                    [(revision, c["snapshot_id"]) for c in value["citations"]])
+                results.append({"entry_id": value["entry_id"], "revision_id": revision,
+                                "state": "saved", "status": "pending_review"})
+            self.db.execute("INSERT INTO events(at,event,details_json) VALUES(?, 'draft_import', ?)",
+                            (utc_now(), canonical({"results": results})))
+        return results
+
+    def _stale(self, revision: int) -> bool:
+        rows = self.db.execute("""SELECT s.latest_snapshot,s.config_json AS current_config,
+            p.snapshot_id,p.config_json AS pinned_config FROM citations c
+            JOIN snapshots p USING(snapshot_id) JOIN sources s USING(source_id) WHERE c.revision_id=?""", (revision,)).fetchall()
+        return not rows or any(row["latest_snapshot"] != row["snapshot_id"] or
+                               row["current_config"] != row["pinned_config"] or
+                               not json.loads(row["current_config"])["policy"]["allow_fetch"] for row in rows)
+
+    def entry(self, entry_id: str, revision_id: int | None = None) -> dict[str, Any]:
+        if revision_id is None:
+            row = self.db.execute("""SELECT r.* FROM entries e JOIN entry_revisions r
+                ON r.revision_id=e.current_revision WHERE e.entry_id=?""", (entry_id,)).fetchone()
+        else:
+            row = self.db.execute("SELECT * FROM entry_revisions WHERE entry_id=? AND revision_id=?", (entry_id, revision_id)).fetchone()
+        if row is None:
+            raise ContractError("entry revision not found")
+        if digest(row["payload_json"]) != row["payload_sha256"]:
+            raise ContractError("entry integrity mismatch")
+        payload = json.loads(row["payload_json"])
+        return {"revision_id": row["revision_id"], "status": row["status"], "created_at": row["created_at"],
+                "published_at": row["published_at"], "payload_sha256": row["payload_sha256"],
+                "review": json.loads(row["review_json"]) if row["review_json"] else None,
+                "stale": self._stale(row["revision_id"]), "entry": payload,
+                "sources": [self.snapshot(c["snapshot_id"]) for c in payload["citations"]]}
+
+    def review(self, entry_id: str, revision: int, decision: str, reviewer: str,
+               note: str, attested: bool) -> dict[str, Any]:
+        required_text(reviewer, "reviewer", 200)
+        required_text(note, "review note")
+        if not attested:
+            raise ContractError("explicit --human-reviewed attestation is required")
+        if decision not in {"approve", "reject"}:
+            raise ContractError("decision must be approve or reject")
+        item = self.entry(entry_id)
+        if item["revision_id"] != revision or item["status"] != "pending_review":
+            raise ContractError("review must target the current pending revision")
+        if decision == "approve" and item["stale"]:
+            raise ContractError("stale source evidence; recollect/revise before approval")
+        review = {"decision": decision, "reviewer": reviewer, "note": note, "at": utc_now()}
+        with self.db:
+            self.db.execute("UPDATE entry_revisions SET status=?,review_json=? WHERE revision_id=?",
+                            ("approved" if decision == "approve" else "rejected", canonical(review), revision))
+            self.db.execute("INSERT INTO events(at,event,details_json) VALUES(?,'entry_review',?)",
+                            (utc_now(), canonical({"entry_id": entry_id, "revision_id": revision, **review})))
+        return self.entry(entry_id)
+
+    def publish(self, entry_id: str, revision: int) -> dict[str, Any]:
+        item = self.entry(entry_id)
+        if item["revision_id"] != revision or item["status"] != "approved" or item["stale"]:
+            raise ContractError("only the current approved revision with current evidence can be published")
+        with self.db:
+            self.db.execute("UPDATE entry_revisions SET status='published',published_at=? WHERE revision_id=?", (utc_now(), revision))
+            self.db.execute("INSERT INTO events(at,event,details_json) VALUES(?,'entry_publish',?)",
+                            (utc_now(), canonical({"entry_id": entry_id, "revision_id": revision})))
+        return self.entry(entry_id)
+
+    def search(self, text: str, *, preview: bool = False, limit: int = 20) -> dict[str, Any]:
+        required_text(text, "search text", 200)
+        if not 1 <= limit <= 100:
+            raise ContractError("search limit must be between 1 and 100")
+        needle = normalize(text)
+        # instr is a literal Unicode substring search, including 1/2-character Chinese words;
+        # it avoids FTS tokenization gaps and SQL/FTS wildcard interpretation. Small corpus only.
+        rows = self.db.execute("""SELECT r.entry_id,r.revision_id FROM entries e
+            JOIN entry_revisions r ON r.revision_id=e.current_revision
+            WHERE instr(r.search_text,?)>0 AND (? OR r.status='published') ORDER BY r.entry_id""", (needle, preview))
+        matches = []
+        for row in rows:
+            item = self.entry(row["entry_id"], row["revision_id"])
+            if not preview and item["stale"]:
+                continue
+            # Formal results never return private evidence quotes or raw source body.
+            item["entry"] = dict(item["entry"])
+            item["entry"]["citations"] = [{k: v for k, v in c.items() if k != "evidence_quote"}
+                                          for c in item["entry"]["citations"]]
+            matches.append(item)
+            if len(matches) == limit:
+                break
+        return {"scope": "review_preview" if preview else "published", "query": text,
+                "status": "ok" if matches else "no_data", "matches": matches}
+
+    def stats(self) -> dict[str, Any]:
+        counts = {table: self.db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                  for table in ("sources", "snapshots", "entries", "entry_revisions", "events")}
+        states = {row["status"]: row["n"] for row in self.db.execute("""SELECT r.status,count(*) AS n
+            FROM entries e JOIN entry_revisions r ON r.revision_id=e.current_revision GROUP BY r.status""")}
+        return {"data_dir": str(self.root), "database": str(self.root / "knowledge.sqlite3"),
+                "schema_version": 1, "free_bytes": shutil.disk_usage(self.root).free,
+                "counts": counts, "current_states": states}

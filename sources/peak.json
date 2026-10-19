@@ -1,0 +1,156 @@
+{
+  "manifest_version": 1,
+  "game": "PEAK:3527290",
+  "sources": [
+    {
+      "source_id": "landfall-peak",
+      "url": "https://landfall.se/peak",
+      "source_type": "official",
+      "title": "PEAK — Landfall",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "main"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": true,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://landfall.se/privacy-policy",
+        "notes": "Reviewed official public marketing page and robots on 2026-10-19; no separate reuse license located. Limited local personal reference cache only; no public original text or media redistribution."
+      }
+    },
+    {
+      "source_id": "wikipedia-peak",
+      "url": "https://en.wikipedia.org/wiki/Peak_(video_game)",
+      "source_type": "wiki",
+      "title": "Peak (video game) — Wikipedia",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "div",
+        "attribute": "id",
+        "value": "mw-content-text"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": true,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
+        "notes": "English Wikipedia text under CC BY-SA; preserve attribution and snapshot hashes. Ordinary article URL only, not disallowed /w/ or /api/; no source images or public raw cache."
+      }
+    },
+    {
+      "source_id": "peak-wikigg-items",
+      "url": "https://peak.wiki.gg/wiki/Items",
+      "source_type": "wiki",
+      "title": "Items — PEAK Wiki",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "div",
+        "attribute": "id",
+        "value": "mw-content-text"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": true,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://peak.wiki.gg/robots.txt",
+        "notes": "Policy preflight: use=reference content signal and explicit GPTBot restrictions observed. Collector must recheck robots and refuse full-text acquisition; do not use an alternate identity or API."
+      }
+    },
+    {
+      "source_id": "steam-peak",
+      "url": "https://store.steampowered.com/app/3527290/PEAK/",
+      "source_type": "official",
+      "title": "PEAK on Steam",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "div",
+        "attribute": "id",
+        "value": "game_area_description"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://store.steampowered.com/subscriber_agreement/",
+        "notes": "Disabled: Steam Subscriber Agreement section 4.C restricts automation; no programmatic content collection. App ID 3527290 is only identity metadata."
+      }
+    },
+    {
+      "source_id": "steam-player-guide",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3514106064",
+      "source_type": "third_party_analysis",
+      "title": "PEAK - Full Basic Guide (Ferni)",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "body"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://store.steampowered.com/subscriber_agreement/",
+        "notes": "Disabled: Steam automation restriction; community page also displays removal/incompatibility notices. Do not cache, translate or treat as verified gameplay evidence."
+      }
+    },
+    {
+      "source_id": "blast-items",
+      "url": "https://blast.tv/gaming/news/all-items-in-peak-explained",
+      "source_type": "third_party_analysis",
+      "title": "All items in PEAK, explained — BLAST.tv",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "article"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://blast.tv/privacy-policy",
+        "notes": "Disabled: terms section 3 prohibits copying/exploiting site content. robots permission alone does not establish cache permission."
+      }
+    },
+    {
+      "source_id": "g2a-guide",
+      "url": "https://www.g2a.com/news/features/10-essential-beginner-tips-to-survive-your-first-climb-in-peak/",
+      "source_type": "third_party_analysis",
+      "title": "10 Essential Beginner Tips — G2A News",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "article"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://www.g2a.com/terms-and-conditions",
+        "notes": "Disabled: section 11.1.3 prohibits systematic retrieval to create a database/catalog without written permission; local preflight also timed out. No guide content cached."
+      }
+    },
+    {
+      "source_id": "polygon-guide",
+      "url": "https://www.polygon.com/guides/608514/peak-game-tips-tricks-beginners-before-you-start",
+      "source_type": "third_party_analysis",
+      "title": "9 Peak beginner tips — Polygon",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "article"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://www.valnetinc.com/en/terms-of-use",
+        "notes": "Disabled: robots explicitly prohibits automated scraping and AI databases without written permission. No collection attempted."
+      }
+    }
+  ]
+}
