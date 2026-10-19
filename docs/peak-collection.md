@@ -1,5 +1,7 @@
 # PEAK 小批來源蒐集、保存與搜尋
 
+新增使用者提供文字的離線來源途徑與詳細道具資料，見 [PEAK Items 附件匯入](peak-items-upload.md)。HTTP來源與上傳來源的身分、權限及取得方式分開，不將上傳檔案說成直接爬取成功；既有審核及search=no隔離維持。
+
 本批以未合併 PR #2 的 `8f02b722b4a70f30fd98681ee6e91ae434d71dc2` 為起點，新增 `catalog` 工作流。新 PR 的 base 是 `codex/ssr-knowledge-workflows`；`main` 尚未有該離線流程。Related to #1、#3。沒有修改其他 repo、部署、合併或共享套件。
 
 ## 能力與資料邊界

@@ -63,6 +63,12 @@ def _robots_search_denied(metadata: dict[str, Any], url: str) -> bool:
     return explicit_no or (isinstance(usage, dict) and usage.get("search_index") == "prohibited")
 
 
+def _source_usable(source: dict[str, Any]) -> bool:
+    if source.get("acquisition", {}).get("kind") == "user_provided_text":
+        return source["policy"].get("allow_import") is True
+    return source["policy"]["allow_fetch"] is True
+
+
 def resolve_data_dir(value: str | Path | None = None) -> Path:
     default = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "SSRKnowledge" / "data"
     path = Path(value or os.environ.get("SSR_KNOWLEDGE_DATA_DIR", str(default))).expanduser().resolve()
@@ -188,16 +194,17 @@ class Catalog:
         current_source = json.loads(current[0])
         unknown = {p: {"status": "unknown", "basis": "no purpose-specific review recorded"} for p in sorted(USAGE_PURPOSES)}
         result["provenance"] = {
-            "original_url": source.get("original_url", source["url"]), "requested_url": source["url"],
+            "original_url": source.get("original_url", source["url"]), "requested_url": meta.get("requested_url", source["url"]),
             "canonical_url": meta.get("canonical_url", source["url"]),
             "canonical_basis": meta.get("canonical_basis", "normalized request URL; page canonical unknown"),
-            "body_locator": source["selector"], "acquired_at": row["fetched_at"],
+            "body_locator": meta.get("body_locator", source["selector"]), "acquired_at": row["fetched_at"],
             "source_updated_at": meta.get("source_updated_at", meta.get("headers", {}).get("last-modified")),
             "source_updated_basis": meta.get("source_updated_basis", "legacy HTTP Last-Modified" if meta.get("headers", {}).get("last-modified") else "unknown"),
             "declared_version": source["declared_version"], "page_version": meta.get("page_dates", {}).get("mw:revisionId") or "unknown",
             "snapshot_usage": source["policy"].get("uses", unknown),
             "current_usage": current_source["policy"].get("uses", unknown),
             "collector_called_llm": False, "url_is_not_proof_of_llm_reading": True,
+            "acquisition_kind": meta.get("acquisition_kind", "http_collection"),
         }
         if include_body:
             result["body"] = row["body"]
@@ -235,7 +242,7 @@ class Catalog:
     def _validate_draft(self, value: Any) -> dict[str, Any]:
         fields = {"entry_id", "game", "category", "name_en", "name_zh", "aliases", "summary_zh",
                   "evidence_class", "citations", "editor", "game_version", "limitations"}
-        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy"}:
+        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details"}:
             raise ContractError("draft must contain exactly the documented fields")
         identifier(value["entry_id"])
         if value["game"] != "PEAK:3527290" or value["category"] not in CATEGORIES:
@@ -258,6 +265,9 @@ class Catalog:
             required_text(alias, "alias", 200)
         if not isinstance(value["citations"], list) or not 1 <= len(value["citations"]) <= 20:
             raise ContractError("one to twenty pinned citations required")
+        details_pinned = "item_details" not in value
+        if not details_pinned and value["category"] != "item":
+            raise ContractError("item_details only belongs to item entries")
         for citation in value["citations"]:
             if not isinstance(citation, dict) or set(citation) != {"snapshot_id", "locator", "evidence_quote"}:
                 raise ContractError("citation needs snapshot_id, locator, evidence_quote")
@@ -271,6 +281,11 @@ class Catalog:
                 raise ContractError("official claims require official citations")
             if value["evidence_class"] == "player_test" and snap["source"]["source_type"] != "player_test":
                 raise ContractError("player_test requires a player-test source, not an inferred test")
+            if "item_details" in value:
+                from .item_table import validate_item_details
+                details_pinned = validate_item_details(value["item_details"], value["name_en"], snap["body"]) or details_pinned
+        if not details_pinned:
+            raise ContractError("item_details is not pinned to any cited source row")
         return value
 
     def import_drafts(self, drafts: Any) -> list[dict[str, Any]]:
@@ -294,6 +309,9 @@ class Catalog:
                     continue
                 self.db.execute("INSERT OR IGNORE INTO entries(entry_id) VALUES(?)", (value["entry_id"],))
                 search = normalize(" ".join([value["name_en"], value["name_zh"], *value["aliases"], value["summary_zh"]]))
+                if "item_details" in value:
+                    detail = value["item_details"]
+                    search += " " + normalize(" ".join(detail["notes_en"] + detail["notes_zh"] + detail["biomes_en"] + detail["locations_en"]))
                 cur = self.db.execute("""INSERT INTO entry_revisions(entry_id,payload_json,payload_sha256,search_text,created_at,status)
                     VALUES(?,?,?,?,?,'pending_review')""", (value["entry_id"], payload, digest(payload), search, utc_now()))
                 revision = cur.lastrowid
@@ -312,7 +330,7 @@ class Catalog:
             JOIN snapshots p USING(snapshot_id) JOIN sources s USING(source_id) WHERE c.revision_id=?""", (revision,)).fetchall()
         return not rows or any(row["latest_snapshot"] != row["snapshot_id"] or
                                row["current_config"] != row["pinned_config"] or
-                               not json.loads(row["current_config"])["policy"]["allow_fetch"] for row in rows)
+                               not _source_usable(json.loads(row["current_config"])) for row in rows)
 
     def entry(self, entry_id: str, revision_id: int | None = None) -> dict[str, Any]:
         if revision_id is None:

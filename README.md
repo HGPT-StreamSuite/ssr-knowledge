@@ -26,6 +26,8 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog search --
 
 ## 原有離線工作流
 
+使用者提供的 PEAK Items 文字也可透過 `catalog import-text-source` 保存原始bytes與來源／授權，再以 `parse-peak-items` 重現列數與數值解析。此途徑沒有HTTP請求，不代表直接爬取成功。本輪附件實際132個唯一道具（頁首宣稱134，差2待查），128新增／4更新，全部待審；詳見 [道具附件匯入與缺欄](docs/peak-items-upload.md)。
+
 1. **預建知識**：從本機 JSON source bundle 產生待審 candidate。
 2. **缺口補充**：將離線 gap 與已整理來源記錄保存為研究包，再由研究包建立待審 candidate；不自行上網研究。
 3. **固定工具準備**：驗證、保存及讀回不可變版本 adapter manifest；`network_enabled=false`，仍不連線 HTTP API／MCP。catalog 蒐集器是獨立明確呼叫的功能，不會更動這些 manifest。

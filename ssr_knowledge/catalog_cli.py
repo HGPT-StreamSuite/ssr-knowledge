@@ -7,12 +7,19 @@ from typing import Any
 from .acquisition import Collector, robots_assessment, validate_manifest
 from .catalog import Catalog
 from .contracts import read_json
+from .item_table import parse_peak_items
+from .upload_source import import_text_source
 
 
 def add_catalog_parser(commands: Any) -> None:
     parser = commands.add_parser("catalog", help="private PEAK source collection, drafts and independent search")
     parser.add_argument("--data-dir", help="outside every Git checkout; or SSR_KNOWLEDGE_DATA_DIR")
     actions = parser.add_subparsers(dest="action", required=True)
+    upload = actions.add_parser("import-text-source", help="save explicitly supplied UTF-8 text and provenance; no HTTP")
+    upload.add_argument("--file", required=True)
+    upload.add_argument("--receipt", required=True)
+    parse = actions.add_parser("parse-peak-items", help="parse a pinned copied Items table; no translation, review or network")
+    parse.add_argument("--snapshot-id", required=True)
     collect = actions.add_parser("collect", help="collect only reviewed exact source URLs")
     collect.add_argument("--manifest", required=True)
     collect.add_argument("--source-id", help="collect just one manifest source")
@@ -57,6 +64,11 @@ def add_catalog_parser(commands: Any) -> None:
 
 def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
     with Catalog(args.data_dir) as store:
+        if args.action == "import-text-source":
+            return import_text_source(store, args.file, read_json(args.receipt)), 0
+        if args.action == "parse-peak-items":
+            result = parse_peak_items(store.snapshot(args.snapshot_id, True)["body"])
+            return result, 2 if result["unparsed_rows"] or result["conflicting_duplicates"] else 0
         if args.action in {"collect", "register-sources"}:
             sources = validate_manifest(read_json(args.manifest))
             if args.action == "register-sources":
