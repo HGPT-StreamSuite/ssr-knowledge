@@ -13,12 +13,20 @@ from .name_reference import import_name_reference
 from .community_names import match_community_names
 from .game_extraction import extract_installed_text, import_game_text
 from .game_localization import pair_saved_game_names
+from .collection_handoff import export_source_plan, ingest_collection, register_file_source
 
 
 def add_catalog_parser(commands: Any) -> None:
     parser = commands.add_parser("catalog", help="private PEAK source collection, drafts and independent search")
     parser.add_argument("--data-dir", help="outside every Git checkout; or SSR_KNOWLEDGE_DATA_DIR")
     actions = parser.add_subparsers(dest="action", required=True)
+    plan = actions.add_parser('export-source-plan', help='read-only export of central sources; no knowledge entries or new permissions')
+    plan.add_argument('--source-id', action='append')
+    local = actions.add_parser('register-file-source', help='register explicit local-file policy centrally; never enables website crawling')
+    local.add_argument('--file', required=True)
+    ingest = actions.add_parser('ingest-collection', help='validate data-only collection packet; --apply explicitly archives raw/body, never knowledge entries')
+    ingest.add_argument('--file', required=True)
+    ingest.add_argument('--apply', action='store_true')
     extract = actions.add_parser("extract-game-names", help="read one official installed TextAsset with a bounded cache; never launches/rewrites the game")
     extract.add_argument("--game-dir", required=True)
     extract.add_argument("--output-dir", required=True)
@@ -108,7 +116,16 @@ def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
         from .live_review import serve_review
         serve_review(args.data_dir, args.port)
         return {"state": "stopped"}, 0
-    with Catalog(args.data_dir) as store:
+    if args.action in {'export-source-plan','register-file-source','ingest-collection'} and not args.data_dir:
+        raise ValueError('collection handoff requires an explicit --data-dir')
+    read_only = args.action == 'export-source-plan' or args.action == 'ingest-collection' and not args.apply
+    with Catalog(args.data_dir, read_only=read_only) as store:
+        if args.action == 'export-source-plan':
+            return export_source_plan(store, args.source_id), 0
+        if args.action == 'register-file-source':
+            return register_file_source(store, read_json(args.file)), 0
+        if args.action == 'ingest-collection':
+            return ingest_collection(store, args.file, apply=args.apply), 0
         if args.action == "badge-drafts":
             from .organization import badge_drafts
             return badge_drafts(store, args.en_snapshot_id, args.zh_snapshot_id), 0

@@ -475,7 +475,7 @@ class Collector:
                                        "policy": source["policy"], "extractor_version": EXTRACTOR_VERSION}
             try:
                 self.catalog.register_source(source)
-                if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text", "web_search_excerpt"}:
+                if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text", "web_search_excerpt", "approved_local_file"}:
                     raise ContractError("imported text sources have no HTTP collection path")
                 if not source["policy"]["allow_fetch"]:
                     raise ContractError("policy blocked: " + source["policy"]["notes"])

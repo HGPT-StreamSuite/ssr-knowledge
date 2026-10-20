@@ -64,7 +64,7 @@ def _robots_search_denied(metadata: dict[str, Any], url: str) -> bool:
 
 
 def _source_usable(source: dict[str, Any]) -> bool:
-    if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text", "web_search_excerpt"}:
+    if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text", "web_search_excerpt", "approved_local_file"}:
         return source["policy"].get("allow_import") is True
     return source["policy"]["allow_fetch"] is True
 
