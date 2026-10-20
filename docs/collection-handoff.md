@@ -4,6 +4,14 @@
 
 `sources.config_json` 是中央現行政策。來源的四種用途、核對時間與依據集中保存；條目引用 snapshot 與段落，不複製整份授權。snapshot 中的當時設定是歷史證據，正式使用仍檢查現行政策。
 
+## 可操作的本機驗收
+
+獨立 collector repo 的 `Start-Acceptance.cmd` 提供一鍵驗收：指定本 repo checkout、checkout 外的測試資料夾，以及可選的既有正式 DB。工具沿用本 repo 已存在的 `.venv`／uv，以獨立 CLI 程序傳檔，分別跑兩端測試；生產核心仍無跨 repo import、共用套件或聊天串接。
+
+成功後 `http://127.0.0.1:8766/` 每次直接讀 SQLite，顯示來源計畫、合成輸入、兩版資料包、保存端測試 DB、拒收／去重／更新與同版測試證據。合成測試與正式 DB 唯讀待審預覽分區，正式 DB 不交給任何寫入 CLI；沒有審核或發布按鈕。真站取得至入庫尚未通過，本輪真實網站原文新增 0。
+
+完整啟動、停止、重播和判讀方式見 [collector 親自驗收說明](https://github.com/HGPT-StreamSuite/ssr-collector-peak/blob/codex/collector-acceptance/docs/acceptance.md)。若缺既有環境、資料不存在或測試失敗就報錯，不安裝新環境，也不以示範資料取代正式 DB。
+
 ```powershell
 # 在本 repo，沿用既有本機 uv/Python。以下全部使用獨立測試 archive。
 uv --offline run --no-sync python -m ssr_knowledge catalog --data-dir C:\private\fixture-archive register-file-source --file C:\collector\fixtures\permitted-source.synthetic.json
