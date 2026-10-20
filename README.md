@@ -2,6 +2,10 @@
 
 獨立執行的本機知識準備工具，只使用此 repo 與 Python 標準函式庫。沒有跨 repo 匯入、共用套件、服務或模型依賴。
 
+## 即時 DB 驗收入口
+
+使用 `catalog --data-dir PATH serve-review` 啟動 `http://127.0.0.1:8765/`。每次搜尋、翻頁與開條目都重新唯讀查詢實際 SQLite，顯示 DB 路徑及讀取時間；有中英文／別名搜尋、分類、來源與徽章關聯。資料庫失敗時直接報錯，不改用示範或上次資料。啟停、狀態與驗收步驟見 [即時唯讀驗收](docs/live-review.md)。舊 HTML 匯出僅保留作快照。
+
 ## PEAK 首批本機 catalog
 
 新增 opt-in `catalog` CLI：從經操作人員檢查的**確切 HTTPS URL 清單**低速蒐集，將原始 HTML、選定正文、來源政策、時間、HTTP metadata 及內容雜湊保存在 checkout 外的 SQLite。只處理 PEAK（Steam app `3527290`）；League of Legends 與 Satisfactory 尚未開始。

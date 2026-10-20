@@ -70,6 +70,8 @@ def add_catalog_parser(commands: Any) -> None:
     relations.add_argument("--entry-id", required=True)
     render = actions.add_parser("render-review", help="write a private readable HTML preview from saved DB entries")
     render.add_argument("--output", required=True)
+    serve = actions.add_parser("serve-review", help="live read-only SQLite review on 127.0.0.1 only; explicit data directory required")
+    serve.add_argument("--port", type=int, default=8765)
     review = actions.add_parser("review-entry", help="human review of an explicit current revision")
     review.add_argument("--entry-id", required=True)
     review.add_argument("--revision", type=int, required=True)
@@ -93,6 +95,10 @@ def add_catalog_parser(commands: Any) -> None:
 def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
     if args.action == "extract-game-names":
         return extract_installed_text(args.game_dir, args.output_dir), 0
+    if args.action == "serve-review":
+        from .live_review import serve_review
+        serve_review(args.data_dir, args.port)
+        return {"state": "stopped"}, 0
     with Catalog(args.data_dir) as store:
         if args.action == "badge-drafts":
             from .organization import badge_drafts

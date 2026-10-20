@@ -83,8 +83,24 @@ def resolve_data_dir(value: str | Path | None = None) -> Path:
 class Catalog:
     """One local writer at a time; no server, FTS extension or model required."""
 
-    def __init__(self, data_dir: str | Path | None = None) -> None:
+    def __init__(self, data_dir: str | Path | None = None, *, read_only: bool = False) -> None:
         self.root = resolve_data_dir(data_dir)
+        if read_only:
+            database = self.root / "knowledge.sqlite3"
+            if not database.is_file():
+                raise ContractError("指定的 knowledge.sqlite3 不存在；不建立或替換資料庫")
+            self.db = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=5)
+            self.db.row_factory = sqlite3.Row
+            try:
+                self.db.execute("PRAGMA query_only = ON")
+                version = self.db.execute("PRAGMA user_version").fetchone()[0]
+                tables = {r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if version != 1 or not {"entries", "entry_revisions", "sources", "snapshots", "citations", "entry_relations"} <= tables:
+                    raise ContractError("指定檔案不是目前支援的 knowledge catalog；不使用其他資料庫")
+            except Exception:
+                self.close()
+                raise
+            return
         existing = self.root
         while not existing.exists():
             existing = existing.parent
