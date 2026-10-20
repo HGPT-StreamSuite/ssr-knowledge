@@ -38,6 +38,15 @@ def add_catalog_parser(commands: Any) -> None:
     reference = actions.add_parser("import-name-reference", help="import reviewed pinned connector text or a bounded web excerpt, without HTTP")
     reference.add_argument("--file", required=True)
     reference.add_argument("--receipt", required=True)
+    excerpt = actions.add_parser("import-web-excerpt", help="save bounded operator-selected search excerpts and provenance; no HTTP fetch or automatic discovery")
+    excerpt.add_argument("--file", required=True)
+    excerpt.add_argument("--receipt", required=True)
+    actions.add_parser("discover-details", help="inventory saved explicit URLs and exact saved HTML links; no network or guessed slugs")
+    batch = actions.add_parser("research-batch", help="resumable reviewed detail-page batch; successful substantive extraction becomes pending English candidates")
+    batch.add_argument("--plan", required=True)
+    batch.add_argument("--max-jobs", type=int, default=2)
+    batch.add_argument("--refresh", action="store_true", help="revisit completed jobs; manual blocks remain stopped")
+    batch.add_argument("--retry-blocked", action="store_true", help="explicitly reconsider blocked jobs after access/terms review")
     community = actions.add_parser("match-community-names", help="exact casefold English matches; community mod names are not game UI verification")
     community.add_argument("--snapshot-id", required=True)
     community.add_argument("--items-snapshot-id", required=True)
@@ -113,6 +122,16 @@ def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
             return import_text_source(store, args.file, read_json(args.receipt)), 0
         if args.action == "import-name-reference":
             return import_name_reference(store, args.file, read_json(args.receipt)), 0
+        if args.action == "import-web-excerpt":
+            from .web_excerpt import import_web_excerpt
+            return import_web_excerpt(store, args.file, read_json(args.receipt)), 0
+        if args.action == "discover-details":
+            from .research import discover
+            return discover(store), 0
+        if args.action == "research-batch":
+            from .research import run_batch
+            result = run_batch(store, read_json(args.plan), max_jobs=args.max_jobs, refresh=args.refresh, retry_blocked=args.retry_blocked)
+            return result, 2 if any(r["state"] in {"manual_required", "retry_wait"} for r in result["results"]) else 0
         if args.action == "match-community-names":
             reference = store.snapshot(args.snapshot_id, True)
             if reference["metadata"].get("name_evidence", {}).get("kind") != "community_mod":

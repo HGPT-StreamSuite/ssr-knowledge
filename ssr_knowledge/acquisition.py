@@ -5,6 +5,7 @@ import codecs
 import http.client
 import ipaddress
 import json
+import math
 import re
 import socket
 import ssl
@@ -402,10 +403,11 @@ class HttpTransport:
 
 class Collector:
     def __init__(self, catalog: Catalog, *, transport: Any = None, sleep: Any = time.sleep,
-                 clock: Any = time.time) -> None:
+                 clock: Any = time.time, body_check: Any = None) -> None:
         self.catalog = catalog
         self.transport = transport or HttpTransport()
         self.sleep, self.clock = sleep, clock
+        self.body_check = body_check
 
     def _cooldown(self, origin: str, seconds: float) -> None:
         with self.catalog.db:
@@ -441,14 +443,17 @@ class Collector:
                 self._cooldown(origin, max(delay, 2 ** attempt))
                 continue
             self.catalog.event(source_id, "http_attempt", {"url": url, "stage": stage, "attempt": attempt,
-                                                        "http_status": response.status})
+                                                        "http_status": response.status, "retry_after": response.headers.get("retry-after")})
             if response.status not in {429, 500, 502, 503, 504}:
                 return response
             retry = max(delay, 2 ** attempt)
             value = response.headers.get("retry-after")
             if value:
                 try:
-                    retry = max(retry, float(value))
+                    seconds = float(value)
+                    if not math.isfinite(seconds) or seconds < 0:
+                        raise ValueError
+                    retry = max(retry, seconds)
                 except ValueError:
                     try:
                         retry = max(retry, parsedate_to_datetime(value).timestamp() - self.clock())
@@ -464,13 +469,13 @@ class Collector:
             raise ContractError("collector supports local_cache, search_index or ai_input; no training workflow")
         results = []
         for source in sources:
-            self.catalog.register_source(source)
             sid, url = source["source_id"], source["url"]
             context: dict[str, Any] = {"url": url, "original_url": source.get("original_url", url),
                                        "purpose": purpose, "collector_called_llm": False,
                                        "policy": source["policy"], "extractor_version": EXTRACTOR_VERSION}
             try:
-                if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text"}:
+                self.catalog.register_source(source)
+                if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text", "web_search_excerpt"}:
                     raise ContractError("imported text sources have no HTTP collection path")
                 if not source["policy"]["allow_fetch"]:
                     raise ContractError("policy blocked: " + source["policy"]["notes"])
@@ -511,12 +516,30 @@ class Collector:
                 encoding = charset.group(1) if charset else "utf-8"
                 codecs.lookup(encoding)
                 html = response.raw.decode(encoding, errors="strict")
-                if re.search(r"<title>\s*(just a moment|access denied|attention required|sign in)", html, re.I):
+                if re.search(r"<input\b[^>]*\btype\s*=\s*['\"]?password\b", html, re.I):
+                    raise ContractError("login required; no authentication bypass")
+                if re.search(r"<title\b[^>]*>\s*(just a moment|access denied|attention required|sign in)|(?:cf-chl-|challenge-platform|g-recaptcha)", html, re.I):
                     raise ContractError("access challenge detected; no bypass")
                 parser = BodyExtractor(source["selector"])
                 parser.feed(html)
                 parser.close()
                 body = parser.body()
+                # A job-specific parser can reject title-only/incomplete pages
+                # before changing the latest good snapshot or any entry.
+                if self.body_check:
+                    context["stage"] = "substantive_parse"
+                    try:
+                        self.body_check(source, html, body)
+                    except ContractError:
+                        root = self.catalog.root / "quarantine"
+                        root.mkdir(exist_ok=True)
+                        token = digest(response.raw)
+                        raw_path, body_path = root / (token + ".html"), root / (token + ".txt")
+                        if not raw_path.exists(): raw_path.write_bytes(response.raw)
+                        if not body_path.exists(): body_path.write_text(body, encoding="utf-8")
+                        context["quarantine"] = {"raw_path": str(raw_path), "body_path": str(body_path), "raw_sha256": token,
+                                                 "reason": "substantive parser rejected; not a latest snapshot or entry"}
+                        raise
                 canonical_url = url
                 canonical_basis = "normalized_request_url; page canonical unknown"
                 if len(set(parser.canonical_urls)) == 1:
@@ -538,8 +561,39 @@ class Collector:
                 result = self.catalog.save_snapshot(source, response.raw, body, context)
                 self.catalog.event(sid, "collection_result", {**context, **result})
                 results.append({**result, "url": url})
-            except (ContractError, UnicodeError, LookupError, ValueError) as exc:
-                result = {"source_id": sid, "url": url, "state": "blocked_or_failed", "error": str(exc)}
+            except (ContractError, UnicodeError, LookupError, ValueError, OSError) as exc:
+                kind = failure_kind(context, str(exc))
+                parsed = urllib.parse.urlsplit(url)
+                throttle = self.catalog.db.execute("SELECT next_at FROM throttles WHERE origin=?", (f"{parsed.scheme}://{parsed.netloc}",)).fetchone()
+                result = {"source_id": sid, "url": url, "state": "blocked_or_failed", "error": str(exc),
+                          "failure_kind": kind, "retryable": kind in {"rate_limited", "transient_network", "server_error", "cooldown"},
+                          "next_attempt_at": throttle[0] if throttle else None,
+                          "http_status": context.get("http_status"), "robots_http_status": context.get("robots_http_status")}
                 self.catalog.event(sid, "collection_result", {**context, **result})
                 results.append(result)
         return results
+
+
+def failure_kind(context: dict[str, Any], error: str) -> str:
+    """Operational categories, not guesses about a site's anti-bot vendor."""
+    if "URL already registered" in error or "source_id URL cannot change" in error: return "source_conflict"
+    if error.startswith("policy blocked:") or error.startswith("purpose "):
+        uses = context.get("policy", {}).get("uses", {})
+        states = {uses.get(p, {}).get("status", "unknown") for p in {"local_cache", context.get("purpose", "local_cache")}}
+        return "policy_prohibited" if "prohibited" in states else "terms_unreviewed" if "unknown" in states else "policy_prohibited"
+    status = context.get("http_status")
+    robots_status = context.get("robots_http_status")
+    if status == 429 or robots_status == 429: return "rate_limited"
+    if status in {401, 407}: return "auth_required"
+    if "login required" in error: return "auth_required"
+    if status == 403: return "forbidden"
+    if status in {404, 410}: return "not_found_unverified"
+    if status in {500, 502, 503, 504} or robots_status in {500, 502, 503, 504}: return "server_error"
+    if status and 300 <= status < 400: return "redirect_blocked"
+    if "challenge" in error.lower() or "sign in" in error.lower(): return "challenge"
+    if "robots disallows" in error or "content signal prohibits" in error: return "robots_disallowed"
+    if "robots" in error: return "robots_unavailable"
+    if "network failure" in error: return "transient_network"
+    if "cooldown" in error: return "cooldown"
+    if context.get("stage") == "substantive_parse" or "selector" in error or "body too short" in error: return "parse_incomplete"
+    return "unsupported_or_invalid"

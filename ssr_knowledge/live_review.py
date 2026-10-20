@@ -27,18 +27,25 @@ def entry_kind(payload: dict[str, Any]) -> str:
     return "item" if payload["category"] == "item" else "badge" if payload.get("badge_details", {}).get("kind") == "game_badge" else "other"
 
 
-def project_source(value: dict[str, Any]) -> dict[str, Any]:
+def project_source(value: dict[str, Any], citation: dict[str, Any] | None = None) -> dict[str, Any]:
     cfg, meta = value["source"], value["metadata"]
+    kind = cfg.get("acquisition", {}).get("kind", meta.get("acquisition_kind", "saved_source"))
+    local = kind == "installed_game_text"
+    receipt = meta.get("receipt", {})
     return {"title": cfg["title"], "type": cfg["source_type"], "language": cfg.get("language"),
-            "url": value["provenance"]["original_url"], "acquisition_kind": cfg.get("acquisition", {}).get("kind", meta.get("acquisition_kind", "saved_source")),
+            "url": None if local else value["provenance"]["original_url"],
+            "attribution_url": value["provenance"]["original_url"] if local else None,
+            "acquisition_uri": cfg["url"], "acquisition_kind": kind,
+            "resource": {k: receipt[k] for k in ("asset", "text_asset_name", "path_id", "game_version", "steam_build_id") if k in receipt} if local else None,
+            "locator": citation["locator"] if citation else None, "evidence_quote": citation["evidence_quote"] if citation else None,
             "saved_at": value["fetched_at"], "source_updated_at": meta.get("source_updated_at"), "version": cfg.get("declared_version")}
 
 
 def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = False) -> dict[str, Any]:
     payload = record["entry"]
     names = display_names(payload)
-    sources = [project_source(s) for s in record["sources"]]
-    items_sources = [s for s in sources if s["type"] == "wiki" and urlsplit(s["url"]).hostname == "peak.wiki.gg" and urlsplit(s["url"]).path.rstrip("/") == "/wiki/Items"]
+    sources = [project_source(s, c) for s, c in zip(record["sources"], payload["citations"])]
+    items_sources = [s for s in sources if s["type"] == "wiki" and urlsplit(s["url"] or "").hostname == "peak.wiki.gg" and urlsplit(s["url"] or "").path.rstrip("/") == "/wiki/Items"]
     wiki_label = ("Wiki Items：已保存附件" if any(s["acquisition_kind"] == "user_provided_text" for s in items_sources)
                   else "Wiki Items：已保存引用" if items_sources else "來源：已有保存引用")
     detail = payload.get("detail_page")
@@ -70,11 +77,19 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
         sections.append({"label": "條件（官方顯示文字）", "notes": [payload["badge_details"]["condition_zh"]]})
     else:
         sections.append({"label": "已保存摘要", "notes": [payload["summary_zh"]]})
+    guide = payload.get("guide_details")
+    from .guide_details import TOPICS
+    guide_claims = [{"topic": c["topic"], "label": TOPICS[c["topic"]], "text_zh": c["text_zh"], "source_class": c["source_class"],
+                     "evidence": [{"quote": e["quote"], "source": sources[e["citation"]]} for e in c["evidence"]]} for c in guide["claims"]] if guide else []
+    guide_gaps = [{**g, "label": TOPICS[g["topic"]]} for g in guide["gaps"]] if guide else []
+    extracts = [{"translation_status": e["translation_status"], "coverage": e["coverage"], "missing_labels": [TOPICS.get(t, t) for t in e["coverage"]["missing"]], "source": sources[e["citation"]],
+                 "blocks": [{**b, "label": TOPICS[b["topic"]]} for b in e["blocks"]]} for e in payload.get("research_extracts", [])]
     result = {"entry_id": payload["entry_id"], "revision_id": record["revision_id"], "kind": entry_kind(payload), "category": payload["category"],
               "name_zh": preferred.get("text", payload["name_zh"]), "name_en": names.get("en", {}).get("text", payload["name_en"]),
               "name_label": name_label, "review_status": record["status"], "review_label": REVIEW_LABELS[record["status"]],
               "stale": record["stale"], "wiki_items_present": bool(items_sources), "source_label": wiki_label,
               "detail_page": detail_status if payload["category"] == "item" else None, "sections": sections, "missing_topics": missing,
+              "guide_claims": guide_claims, "guide_gaps": guide_gaps, "research_extracts": extracts,
               "teaser": next((("" if s["label"] in {"用途與效果", "已保存摘要"} else s["label"] + "：") + s["notes"][0] for s in sections if s["notes"]), "")}
     if detailed:
         related = {}
@@ -82,10 +97,17 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
             eid = link["related_entry_id"]
             target = store.entry(eid)["entry"]
             other = related.setdefault(eid, {"entry_id": eid, "name_zh": link["related_names"].get("zh-TW", {}).get("text", target["name_zh"]),
-                                             "name_en": link["related_names"].get("en", {}).get("text", ""), "evidence": []})
+                                             "name_en": link["related_names"].get("en", {}).get("text", ""), "evidence": [], "evidence_details": []})
             label = "Items 備註提示" if link["kind"] == "badge_hint" else "官方條件提及"
             if label not in other["evidence"]:
                 other["evidence"].append(label)
+            origin = store.entry(link["source_entry_id"], link["revision_id"])
+            index = link["citation_index"]
+            note = link["note_index"]
+            translation = origin["entry"].get("organization", {}).get("notes_zh", [])
+            other["evidence_details"].append({"label": label, "text_en": link["evidence_text"],
+                "text_zh": translation[note] if isinstance(note, int) and note < len(translation) else None,
+                "source": project_source(origin["sources"][index], origin["entry"]["citations"][index])})
         result.update({"aliases": payload["aliases"], "sources": sources, "relations": list(related.values()),
                        "game_version": payload["game_version"], "saved_at": record["created_at"],
                        "statistics": payload.get("item_details", {}).get("statistics", {}),

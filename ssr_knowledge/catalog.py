@@ -64,7 +64,7 @@ def _robots_search_denied(metadata: dict[str, Any], url: str) -> bool:
 
 
 def _source_usable(source: dict[str, Any]) -> bool:
-    if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text"}:
+    if source.get("acquisition", {}).get("kind") in {"user_provided_text", "local_name_reference", "installed_game_text", "web_search_excerpt"}:
         return source["policy"].get("allow_import") is True
     return source["policy"]["allow_fetch"] is True
 
@@ -266,7 +266,7 @@ class Catalog:
     def _validate_draft(self, value: Any) -> dict[str, Any]:
         fields = {"entry_id", "game", "category", "name_en", "name_zh", "aliases", "summary_zh",
                   "evidence_class", "citations", "editor", "game_version", "limitations"}
-        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details", "names", "organization", "badge_details", "links", "detail_page"}:
+        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details", "names", "organization", "badge_details", "links", "detail_page", "guide_details", "research_extracts"}:
             raise ContractError("draft must contain exactly the documented fields")
         identifier(value["entry_id"])
         if value["game"] != "PEAK:3527290" or value["category"] not in CATEGORIES:
@@ -318,6 +318,10 @@ class Catalog:
         validate_organization(value)
         validate_badge(value, name_snapshots, lambda sid: self.db.execute("SELECT raw FROM snapshots WHERE snapshot_id=?", (sid,)).fetchone()[0])
         validate_links(value, lambda eid: self.entry(eid)["entry"], name_snapshots)
+        from .guide_details import validate_guide
+        validate_guide(value, name_snapshots)
+        from .research import validate_extracts
+        validate_extracts(value, name_snapshots)
         return value
 
     def import_drafts(self, drafts: Any) -> list[dict[str, Any]]:
@@ -346,6 +350,9 @@ class Catalog:
                     search += " " + normalize(" ".join(detail["notes_en"] + detail["notes_zh"] + detail["biomes_en"] + detail["locations_en"]))
                 if "badge_details" in value:
                     search += " " + normalize(value["badge_details"]["condition_en"] + " " + value["badge_details"]["condition_zh"])
+                from .guide_details import guide_search_text
+                search += " " + normalize(guide_search_text(value))
+                search += " " + normalize(" ".join(b["text_en"] for extract in value.get("research_extracts", []) for b in extract["blocks"]))
                 cur = self.db.execute("""INSERT INTO entry_revisions(entry_id,payload_json,payload_sha256,search_text,created_at,status)
                     VALUES(?,?,?,?,?,'pending_review')""", (value["entry_id"], payload, digest(payload), search, utc_now()))
                 revision = cur.lastrowid

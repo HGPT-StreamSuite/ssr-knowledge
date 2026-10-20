@@ -47,3 +47,7 @@ git diff --check
 合成測試驗證搜尋／分類／分頁、狀態、數值缺漏、關聯、更新可見、失檔／錯誤 DB、HTTP 唯讀、同址保護及來源文本惰性。實際 Chrome 畫面、表單導覽與截圖須另有真實證據；HTTP／HTML 測試不冒稱視覺驗收。私有 DB、完整 JSON／HTML、截圖及驗收資料不入 Git。
 
 舊 `render-review` 仍可匯出當時快照，但不是即時驗收的主入口。這個工具也沒有執行遊戲實測或代替使用者批准知識。
+
+攻略補充分開顯示官方條件、人工整理的來源段落、自動擷取的英文候選與尚缺欄位。關聯顯示原有 Items 備註的實際方法與來源，不只列名稱。本機 `Localized_Text` 的來源標題不連到 Steam 商店；明細顯示 asset、TextAsset、path_id、語系與引用 key。商店另標為歸屬連結，英文／繁中投影不冒充兩篇獨立文章。
+
+有界採集與例外處理見 [research-batches.md](research-batches.md)。

@@ -6,6 +6,8 @@
 
 使用 `catalog --data-dir PATH serve-review` 啟動 `http://127.0.0.1:8765/`。每次搜尋、翻頁與開條目都重新唯讀查詢實際 SQLite，顯示 DB 路徑及讀取時間；有中英文／別名搜尋、分類、來源與徽章關聯。資料庫失敗時直接報錯，不改用示範或上次資料。啟停、狀態與驗收步驟見 [即時唯讀驗收](docs/live-review.md)。舊 HTML 匯出僅保留作快照。
 
+詳細來源可用 [有界批次採集](docs/research-batches.md) 保存逐條進度、失敗分類、有限重試及英文待審擷取；[PEAK 詳頁可行性結果](docs/peak-detail-feasibility.md) 分開記錄合成流程測試、真實存取阻擋與人工索引候選。目前沒有通過全庫原站採集的可行性驗證。
+
 ## PEAK 首批本機 catalog
 
 新增 opt-in `catalog` CLI：從經操作人員檢查的**確切 HTTPS URL 清單**低速蒐集，將原始 HTML、選定正文、來源政策、時間、HTTP metadata 及內容雜湊保存在 checkout 外的 SQLite。只處理 PEAK（Steam app `3527290`）；League of Legends 與 Satisfactory 尚未開始。
@@ -40,7 +42,7 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge catalog search --
 2. **缺口補充**：將離線 gap 與已整理來源記錄保存為研究包，再由研究包建立待審 candidate；不自行上網研究。
 3. **固定工具準備**：驗證、保存及讀回不可變版本 adapter manifest；`network_enabled=false`，仍不連線 HTTP API／MCP。catalog 蒐集器是獨立明確呼叫的功能，不會更動這些 manifest。
 
-需求為 Python 3.11+；現有 `uv.lock` 無第三方依賴。
+需求為 Python 3.11+；預設 catalog 使用標準函式庫。已鎖定的可選 `extraction` 群組供官方遊戲資源唯讀擷取使用。
 
 ```powershell
 uv --cache-dir .uv-cache --offline lock --check

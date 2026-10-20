@@ -41,14 +41,26 @@ def source_html(source: dict[str, Any]) -> str:
     if safe_url(source["url"]):
         title = '<a href="' + esc(source["url"]) + '" target="_blank" rel="noreferrer">' + title + ' ↗</a>'
     kind = source["acquisition_kind"]
-    label = "使用者提供附件" if kind == "user_provided_text" else "已保存的本機官方文字" if kind == "installed_game_text" else "已保存的來源引用"
+    label = ("使用者提供附件" if kind == "user_provided_text" else "已保存的本機官方文字" if kind == "installed_game_text"
+             else "搜尋索引摘錄；完整頁面未取得，非直接抓取成功" if kind == "web_search_excerpt" else "已保存的來源引用")
     parts = [label]
     if source.get("version"):
         parts.append(esc(source["version"]))
     if source.get("source_updated_at"):
         parts.append('來源標示日期 ' + esc(source["source_updated_at"]))
     parts.append('保存時間 ' + esc(source["saved_at"]))
-    return '<div class="source"><p>' + title + '</p><small>' + ' · '.join(parts) + '</small></div>'
+    content = '<div class="source"><p>' + title + '</p><small>' + ' · '.join(parts) + '</small>'
+    if kind == "installed_game_text":
+        content += '<p>引用自本機已保存遊戲資源；英文與繁體中文是同一資源的語系投影。</p>'
+        resource = source.get("resource") or {}
+        content += '<p>' + esc(' · '.join(str(resource[k]) for k in ("asset", "text_asset_name", "path_id") if k in resource)) + '</p>'
+        if safe_url(source.get("attribution_url")):
+            content += '<p><a href="' + esc(source["attribution_url"]) + '" target="_blank" rel="noreferrer">遊戲商店（歸屬連結；非引用正文）↗</a></p>'
+    if source.get("locator"):
+        content += '<p>引用位置：' + esc(source["locator"]) + '</p>'
+    if source.get("evidence_quote"):
+        content += '<p>定位短引文：' + esc(source["evidence_quote"]) + '</p>'
+    return content + '</div>'
 
 
 def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
@@ -65,11 +77,29 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
     for section in entry["sections"]:
         if section["notes"]:
             content += '<section><h3>' + esc(section["label"]) + '</h3><ul>' + ''.join('<li>' + esc(n) + '</li>' for n in section["notes"]) + '</ul></section>'
+    if entry["guide_claims"]:
+        content += '<section><h3>攻略補充（來源分列，待驗收）</h3><p class="muted">人工整理草稿；不代表官方解鎖邏輯或遊戲實測。</p>'
+        for claim in entry["guide_claims"]:
+            kind_label = {"wiki": "Wiki 攻略", "third_party_analysis": "第三方分析", "player_test": "玩家實測"}[claim["source_class"]]
+            content += '<h4>' + esc(claim["label"]) + ' · ' + kind_label + '</h4><p>' + esc(claim["text_zh"]) + '</p>'
+            content += '<details><summary>這段的來源依據</summary>'
+            for evidence in claim["evidence"]:
+                content += '<p>' + esc(evidence["quote"]) + '</p>' + source_html(evidence["source"])
+            content += '</details>'
+        content += '</section>'
+    if entry["guide_gaps"]:
+        content += '<section><h3>攻略尚缺資料</h3><ul>' + ''.join('<li>' + esc(g["label"] + '：' + g["reason"]) + '</li>' for g in entry["guide_gaps"]) + '</ul></section>'
+    for extract in entry["research_extracts"]:
+        content += '<section><h3>自動擷取的英文候選（待翻譯與人工審核）</h3><p class="muted">有實質段落不代表攻略完整；不同來源尚未調和。</p>'
+        content += '<ul>' + ''.join('<li>' + esc(b["label"] + '：' + b["text_en"]) + '</li>' for b in extract["blocks"]) + '</ul>'
+        content += '<p class="missing">未擷取欄位：' + esc('、'.join(extract["missing_labels"])) + '</p>' + source_html(extract["source"]) + '</section>'
     if entry["relations"]:
         content += '<section><h3>相關條目</h3><ul class="related">'
         for related in entry["relations"]:
             url = '/?' + urlencode({"entry": related["entry_id"]})
             content += '<li><a href="' + esc(url) + '">' + esc(related["name_zh"]) + '</a><small>' + esc('、'.join(related["evidence"])) + '</small></li>'
+            for evidence in related["evidence_details"]:
+                content += '<li><p>' + esc(evidence["text_zh"] or evidence["text_en"]) + '</p><small>' + esc(evidence["source"]["title"]) + ' · ' + esc(evidence["label"]) + '</small></li>'
         content += '</ul></section>'
     if entry["missing_topics"]:
         content += '<p class="missing">待補資料：' + esc('、'.join(entry["missing_topics"])) + '</p>'

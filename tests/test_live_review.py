@@ -127,6 +127,25 @@ class LiveReviewTests(unittest.TestCase):
         self.assertEqual(cannon['detail_page']['state'], 'missing_link')
         self.assertEqual(cannon['detail_page']['label'], '詳細頁：尚未補連結')
 
+    def test_local_resource_is_not_a_store_article_and_incoming_hint_retains_method(self):
+        badge_id = self.fixture.badge['entry_id']
+        badge = self.api(entry=badge_id)['detail']
+        for source in badge['sources']:
+            self.assertIsNone(source['url'])
+            self.assertTrue(source['acquisition_uri'].startswith('installed-game-text:'))
+            self.assertIn('NAME_', source['locator'])
+        hint = next(e for e in badge['relations'][0]['evidence_details'] if e['label'] == 'Items 備註提示')
+        self.assertEqual(hint['text_en'], self.item['item_details']['notes_en'][1])
+        self.assertEqual(hint['text_zh'], self.item['organization']['notes_zh'][1])
+        self.assertEqual(hint['source']['locator'], self.item['citations'][0]['locator'])
+        status, page, _ = self.request('/?' + urlencode({'entry': badge_id}))
+        self.assertEqual(status, 200)
+        self.assertIn('歸屬連結；非引用正文', page)
+        self.assertIn('同一資源的語系投影', page)
+        self.assertIn(hint['text_zh'], page)
+        for source in badge['sources']:
+            self.assertNotIn('>' + source['title'] + ' ↗</a>', page)
+
     def test_new_commit_is_visible_on_next_request_without_restart(self):
         before = self.api(entry=self.item['entry_id'])
         revised = copy.deepcopy(self.item)
