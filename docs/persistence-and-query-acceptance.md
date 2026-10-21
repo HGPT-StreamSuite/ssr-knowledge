@@ -74,6 +74,6 @@ uv --offline run --no-sync python -m ssr_knowledge catalog --data-dir C:\private
 - 現有 draft 驗證仍限 PEAK:3527290；介紹、評價、角色／模式已納入，並以已登記的 game plan 驗證本批目標與欄位。其他遊戲或超出受支援分類仍需明確擴充。
 - v1 文件包沒有 typed tables 或多頁陣列，也不自動產生草稿。
 - 舊 links 保留 badge_hint 與 condition_mentions_item 的嚴格驗證；新的 knowledge_links 按遊戲計畫驗證一般有向關聯及逐項引用。來源未命名的攻略物品集合仍不得猜補。
-- 當前本機真實持久 DB 已有 [109 個待審條目、122 個歷史修訂](peak-late-game-acceptance.md)，全部逐筆讀回及 Chrome 畫面核對。家裡前一批已合併為 [244 條目／665 修訂](home-merge-acceptance.md)，保留原庫與歷史；本機其後的 76 筆變更待家裡原聊天合併驗收。兩個 DB 各自記錄，不能互相代替最新查詢結果。
+- 當前本機真實持久 DB 已有 [244 個待審條目、261 個歷史修訂](peak-completion-acceptance.md)，全部逐筆經新 CLI、API 與 Chrome 查詢核對；原 122 個修訂保留，9 個欄位缺口剩 1 個。本輪依使用者指示不處理家裡；[既有家裡驗收](home-merge-76-acceptance.md)與本機結果分開，不能互相代替最新查詢結果。
 
 本輪若找到且有權使用的補充資料，應完成 B 寫入及 C 讀回；只有缺少指定 DB、來源取得受限或驗證能力不足等真實阻塞才保留未完成，記錄最後完成階段及具體原因。**不因文件規格、合成測試或 issue 更新完成，就將真實資料驗收勾選完成。**
