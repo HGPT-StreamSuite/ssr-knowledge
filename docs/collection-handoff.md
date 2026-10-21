@@ -26,7 +26,7 @@ uv --offline run --no-sync python -m ssr_knowledge catalog --data-dir C:\private
 
 `register-file-source` 需要明確 `approved_local_file` 來源設定、`approved-file:SOURCE_ID` 內部 URL、出處 HTTPS original_url、allow_fetch=false 與明確 allow_import。這是另一條取得路徑的中央登記，不得用來替原網站解除禁止。合成 fixture 的許可只適用於合成文本，不能代表任何真站。真實來源仍需核對權限依據，unknown 維持 unknown。
 
-`ingest-collection` 只接受 `ssr.collection.v1`，producer=`ssr-collector-peak/0.1.0`。根欄位只可有 format、producer、source_ref、document、bundle_id；source_ref 只有 source_id 和 config_sha256。document 包含 url、captured_at、observed_at、raw_base64、raw_sha256、body、body_sha256、metadata。canonical JSON 為排序鍵、緊湊分隔符、UTF-8、不跳脫 Unicode、拒絕 NaN；bundle_id 計算時排除自身。
+`ingest-collection` 只接受 `ssr.collection.v1`，producer 為可核對的 `名稱/主版.次版.修補版`（本 collector 為 `ssr-collector-peak/0.1.0`）。根欄位只可有 format、producer、source_ref、document、bundle_id；source_ref 只有 source_id 和 config_sha256。document 包含 url、captured_at、observed_at、raw_base64、raw_sha256、body、body_sha256、metadata。canonical JSON 為排序鍵、緊湊分隔符、UTF-8、不跳脫 Unicode、拒絕 NaN；bundle_id 計算時排除自身。
 
 接收端要求來源已在中央登記，核對精確設定雜湊、網址、用途、原文／正文雜湊與時間，重新解析正文，拒絕包內權限、審核、發布欄位。原文上限 2 MB、正文上限 2,000,000 字元、JSON 檔上限 6 MB。檔案來源只接受 UTF-8 plain_text 或中央 selector 的 html；script/style/hidden 不進正文。來源文本永遠是資料，不執行命令、不呼叫 LLM。設定更新後需重新取得來源計畫。
 
@@ -37,3 +37,16 @@ uv --offline run --no-sync python -m ssr_knowledge catalog --data-dir C:\private
 使用者目前選定的網站取得方式是 computer use／本機 Chrome；新蒐集端的檔案 intake 尚不是 Chrome 自動匯出器。HTTP 核心僅保留可選架構，本輪未抓真站。瀏覽器能讀不代表批次蒐集獲准；不得藉瀏覽器繞過明確限制。原 repo 的 HTTP 核心與研究工作仍保留，沒有宣稱本輪全面搬移。
 
 正式資料庫、原文、來源計畫、handoff 包與私有驗收輸出保持 checkout 外。本 repo 新增的公開測試全部是合成資料，不含真實 PEAK 網頁正文。既有文件與資料不刪除，PR #4 不合併。
+
+
+## 統一契約與前置規劃（2026-10-21）
+
+目前必要／可選欄位、表格／時間／版本／去重與多頁限制，詳見 [ssr.collection.v1 接收契約](collection-contract-v1.md)。同一 format 可由自有與客製 collector 產生，各保留 producer 身份；中央許可與接收驗證不因此放寬。可選 capture_receipt 只核對 DOM 觀測與檔案的綁定，不冒稱 HTTP 200 或來源許可。未帶 receipt 的既有包仍相容。
+
+前置遊戲分析與條目／欄位／關聯計畫以 [collector issue #1](https://github.com/HGPT-StreamSuite/ssr-collector-peak/issues/1) 及其遊戲規劃規格為唯一入口；網站分類不是 DB 分類。介紹、評價、官方更新公告及其日期／版本／作者／影響範圍按規劃保留，意見與官方事實分開。
+
+驗收固定為：**輸入查詢條件 → 直接查指定資料庫 → 顯示實際查詢結果**。測試／報告／驗收頁本身實際執行此流程；真實資料查指定持久 DB，合成模式查明確標示且已實際保存的測試 DB。前端可使用固定版型，結果不得由靜態 JSON、硬編碼摘要、先前快照或其他 DB 代替。
+
+真實完成須逐筆核對「寫入 pending 修訂 → 新程序／新連線讀 DB → API → 實際頁面」的 revision、欄位、來源及關聯。文件 snapshot 不等於知識修訂；找到未存、已存未顯示、來源未提供、取得失敗、驗證阻擋分開記錄。pending 保存不是批准／發布。A／B／C 可獨立執行，以檔案交接，不新增不可分離服務、跨 repo import／共用套件或聊天串接。
+
+現況：公開合成範例已由兩個獨立 CLI 驗證、保存到明確測試 DB、去重、新程序讀回；新增真實知識修訂仍為 0。受限 Wiki 的實際完整擷取→知識保存鏈路未通過，不以合成範例標成完成。

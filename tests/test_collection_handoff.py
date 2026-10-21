@@ -140,3 +140,41 @@ class HandoffTests(unittest.TestCase):
         self.store.review(draft['entry_id'],revision,'approve','synthetic-human','Fixture simulation only.',True)
         self.store.publish(draft['entry_id'],revision)
         self.assertEqual(self.store.search('Lunar Rope')['matches'],[])
+
+
+    def test_documented_actual_collector_example_and_custom_producer(self):
+        fixtures=Path(__file__).resolve().parents[1]/'fixtures'
+        cfg=json.loads((fixtures/'collection-example-source.synthetic.json').read_text(encoding='utf-8'))
+        value=json.loads((fixtures/'collection-example.synthetic.json').read_text(encoding='utf-8'))
+        register_file_source(self.store,cfg)
+        before=(self.data/'knowledge.sqlite3').read_bytes()
+        result=ingest_collection(self.store,self.write(value))
+        self.assertEqual(result['state'],'validated_only')
+        self.assertEqual((self.data/'knowledge.sqlite3').read_bytes(),before)
+        custom=copy.deepcopy(value);custom['producer']='custom-collector/1.0.0';rehash(custom)
+        self.assertEqual(ingest_collection(self.store,self.write(custom))['state'],'validated_only')
+        for key in ['model_answers','revision_id','review']:
+            bad=copy.deepcopy(value);bad[key]='not permitted';rehash(bad)
+            with self.subTest(key=key),self.assertRaises(ContractError):ingest_collection(self.store,self.write(bad))
+
+    def test_optional_dom_receipt_is_not_permission_or_an_http_success(self):
+        from ssr_knowledge.acquisition import BodyExtractor
+        raw='<main>Synthetic observed Lunar Flask. Weight 2; no real source was captured.</main>'
+        cfg=copy.deepcopy(self.cfg);cfg['selector']={'tag':'main'};register_file_source(self.store,cfg)
+        value=packet(cfg,raw,at='2026-01-01T00:00:00+00:00')
+        parser=BodyExtractor(cfg['selector']);parser.feed(raw);parser.close()
+        doc=value['document'];doc['body']=parser.body();doc['body_sha256']=digest(doc['body'])
+        doc['metadata'].update(acquisition_method='operator_file',body_format='html',capture_receipt={
+            'format':'ssr.browser-export.v1','requested_url':cfg['original_url'],'final_url':cfg['original_url'],
+            'title':'Synthetic observation fixture','captured_at':doc['captured_at'],'raw_sha256':doc['raw_sha256'],
+            'export_format':'rendered_dom_html','selector':'main','scope':'Synthetic observation only',
+            'page_updated':None,'license_statement':None,'license_links':[],
+            'method':'local_chrome_computer_use','http_status':None})
+        rehash(value)
+        self.assertEqual(ingest_collection(self.store,self.write(value))['state'],'validated_only')
+        for field,changed in [('http_status',200),('raw_sha256','0'*64),('final_url','https://example.test/other')]:
+            bad=copy.deepcopy(value);bad['document']['metadata']['capture_receipt'][field]=changed;rehash(bad)
+            with self.subTest(field=field),self.assertRaises(ContractError):ingest_collection(self.store,self.write(bad))
+        denied=copy.deepcopy(cfg);denied['policy']['uses']['local_cache']['status']='prohibited';register_file_source(self.store,denied)
+        value['source_ref']['config_sha256']=digest(canonical(denied));rehash(value)
+        with self.assertRaises(ContractError):ingest_collection(self.store,self.write(value))

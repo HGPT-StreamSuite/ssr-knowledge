@@ -61,8 +61,10 @@ def _time(value: Any) -> datetime:
 
 def validate_bundle(store: Catalog, packet: Any) -> tuple[dict[str,Any],bytes,str,dict[str,Any]]:
     if (not isinstance(packet,dict) or set(packet)!={'format','producer','source_ref','document','bundle_id'}
-            or packet['format']!='ssr.collection.v1' or packet['producer']!='ssr-collector-peak/0.1.0'):
+            or packet['format']!='ssr.collection.v1'):
         raise ContractError('unsupported collection packet; no entries, review or permission fields accepted')
+    if not isinstance(packet['producer'],str) or not re.fullmatch(r'[a-z][a-z0-9-]{1,79}/[0-9]+\.[0-9]+\.[0-9]+',packet['producer']):
+        raise ContractError('bounded producer name/semantic-version required; identity is not permission')
     if packet['bundle_id']!=digest(canonical({k:v for k,v in packet.items() if k!='bundle_id'})):
         raise ContractError('bundle hash mismatch')
     ref=packet['source_ref']
@@ -97,6 +99,13 @@ def validate_bundle(store: Catalog, packet: Any) -> tuple[dict[str,Any],bytes,st
             raise ContractError('local-file source is not enabled or falsely claims HTTP')
         if meta.get('acquisition_method') not in {'operator_file','synthetic_fixture'}:
             raise ContractError('unverified browser acquisition claim')
+        if 'capture_receipt' in meta:
+            from .capture_receipt import validate_capture_receipt
+            if meta.get('acquisition_method') != 'operator_file' or meta.get('body_format') != 'html':
+                raise ContractError('DOM observation requires operator_file HTML')
+            validate_capture_receipt(meta['capture_receipt'],source,raw)
+            if meta['capture_receipt']['captured_at'] != doc['captured_at']:
+                raise ContractError('DOM capture time differs from packet capture time')
         text=raw.decode('utf-8-sig',errors='strict')
         if '\x00' in text: raise ContractError('NUL in text input')
         if meta.get('body_format')=='plain_text': extracted=text
