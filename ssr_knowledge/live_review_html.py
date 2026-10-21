@@ -131,6 +131,8 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
     if entry["missing_topics"]:
         content += '<p class="missing">待補資料：' + esc('、'.join(entry["missing_topics"])) + '</p>'
     content += '<details><summary>原文、數值與實際來源</summary>'
+    if entry.get('legacy_table_missing_topics'):
+        content += '<p>原 Items 表未分欄：' + esc('、'.join(entry['legacy_table_missing_topics'])) + '</p>'
     content += '<p>適用版本：' + esc(entry['game_version']) + '</p>'
     if entry["aliases"]:
         content += '<p>別名：' + esc('、'.join(dict.fromkeys(entry["aliases"]))) + '</p>'

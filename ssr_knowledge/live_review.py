@@ -94,15 +94,14 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
               "detail_page": detail_status if payload["category"] == "item" else None, "sections": sections, "missing_topics": missing,
               "guide_claims": guide_claims, "guide_gaps": guide_gaps, "research_extracts": extracts,
               "teaser": next((("" if s["label"] in {"用途與效果", "已保存摘要"} else s["label"] + "：") + s["notes"][0] for s in sections if s["notes"]), "")}
-    result.update(knowledge_fields=[], knowledge_gaps=[], plan_id=None, category_label=payload['category'])
+    result.update(knowledge_fields=[], knowledge_gaps=[], legacy_table_missing_topics=[], plan_id=None, category_label=payload['category'])
     knowledge = payload.get('knowledge_details')
     if knowledge:
-        # Legacy organization describes the original Items table only. A field
-        # saved later in the same revision must not still be called missing.
-        saved_topics = {'purpose': 'effects', 'acquisition': 'acquisition',
-                        'constraints': 'conditions', 'cooking': 'cooking'}
-        provided_labels = {LABELS[saved_topics[key]] for key in knowledge['fields'] if key in saved_topics}
-        result['missing_topics'] = [label for label in result['missing_topics'] if label not in provided_labels]
+        # Organization coverage belongs to the original table, not the complete
+        # revision. Planned fields may include several topics in one value.
+        # Preserve the table metadata separately; explicit planned gaps follow.
+        result['legacy_table_missing_topics'] = result['missing_topics']
+        result['missing_topics'] = []
         from .game_plan import get_plan
         plan = get_plan(store, knowledge['plan_id'])
         category = next(c for c in plan['categories'] if c['id'] == payload['category'])

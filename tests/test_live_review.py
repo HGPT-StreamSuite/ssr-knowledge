@@ -177,12 +177,13 @@ class LiveReviewTests(unittest.TestCase):
         after = self.api(entry=self.item['entry_id'])['detail']
         self.assertEqual(after['revision_id'], saved['revision_id'])
         self.assertNotIn('取得方式', after['missing_topics'])
-        self.assertIn('使用限制', after['missing_topics'])
+        self.assertEqual(after['legacy_table_missing_topics'], before['missing_topics'])
         self.assertEqual(after['knowledge_fields'][0]['value'], 'Crash Site')
         self.assertEqual(after['knowledge_gaps'][0]['id'], 'constraints')
         status, page, _ = self.request('/?' + urlencode({'entry': self.item['entry_id']}))
         self.assertEqual(status, 200)
         self.assertNotIn('待補資料：取得方式', page)
+        self.assertIn('原 Items 表未分欄：取得方式、使用限制', page)
         self.assertIn('This synthetic source does not provide a use limit.', page)
 
     def test_database_disappears_or_wrong_schema_reports_error_without_cached_data(self):
