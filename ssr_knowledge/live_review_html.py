@@ -120,9 +120,13 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
         content += '<section><h3>相關條目</h3><ul class="related">'
         for related in entry["relations"]:
             url = '/?' + urlencode({"entry": related["entry_id"]})
-            content += '<li><a href="' + esc(url) + '">' + esc(related["name_zh"]) + '</a><small>' + esc('、'.join(related["evidence"])) + '</small></li>'
-            for evidence in related["evidence_details"]:
-                content += '<li><p>' + esc(evidence["text_zh"] or evidence["text_en"]) + '</p><small>' + esc(evidence["source"]["title"]) + ' · ' + esc(evidence["label"]) + '</small></li>'
+            content += '<li><a href="' + esc(url) + '">' + esc(related["name_zh"]) + '</a><small>' + esc('、'.join(related["evidence"])) + '</small>'
+            if related["evidence_details"]:
+                content += '<details><summary>關聯來源證據</summary>'
+                for evidence in related["evidence_details"]:
+                    content += '<p>' + esc(evidence["text_zh"] or evidence["text_en"]) + '</p><small>' + esc(evidence["source"]["title"]) + ' · ' + esc(evidence["label"]) + '</small>'
+                content += '</details>'
+            content += '</li>'
         content += '</ul></section>'
     if entry["missing_topics"]:
         content += '<p class="missing">待補資料：' + esc('、'.join(entry["missing_topics"])) + '</p>'
@@ -155,7 +159,8 @@ def render_page(model: dict[str, Any]) -> str:
     content = '<h1>PEAK 本機 DB 驗收</h1><div class="meta"><strong>唯讀 · 每次查詢直接讀取 SQLite</strong><p class="path">' + esc(meta["database"]) + '</p><p>讀取時間：' + esc(meta["read_at"]) + '</p>'
     if meta["latest_revision_recorded_at"]:
         content += '<p>最近條目紀錄：' + esc(meta["latest_revision_recorded_at"]) + '</p>'
-    content += '</div><p class="counts">' + str(counts["entries"]) + ' 條目 · 道具 ' + str(counts["items"]) + '（' + str(counts["organized_items"]) + ' 份詳細表） · 遊戲徽章 ' + str(counts["game_badges"]) + ' · 其他 ' + str(counts["other"]) + '</p>'
+    item_tables = '（' + str(counts["organized_items"]) + ' 份詳細表）' if counts["organized_items"] else ''
+    content += '</div><p class="counts">' + str(counts["entries"]) + ' 條目 · 道具 ' + str(counts["items"]) + item_tables + ' · 遊戲徽章 ' + str(counts["game_badges"]) + ' · 其他 ' + str(counts["other"]) + '</p>'
     if not counts["entries"]:
         content += '<p class="warning">這個 DB 沒有目前條目，請確認上方資料庫路徑。</p>'
     for plan in model.get('plans', []):
