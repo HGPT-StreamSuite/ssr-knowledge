@@ -76,8 +76,6 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
     content += '<p class="path">' + esc(entry['entry_id']) + ' · revision ' + str(entry['revision_id']) + '</p>'
     if entry.get('plan_id'):
         content += '<p>建庫計畫：' + esc(entry['plan_id']) + ' · ' + esc(entry['category_label']) + '</p>'
-    content += '<p class="muted">適用版本：' + esc(entry['game_version']) + '</p>'
-    content += '<p class="warning">' + esc(entry.get('limitations', '')) + '</p>'
     if entry["stale"]:
         content += '<p class="warning">引用來源已有更新；此處顯示條目保存的版本。</p>'
     detail = entry["detail_page"]
@@ -102,7 +100,7 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
     if entry.get('knowledge_gaps'):
         content += '<section><h3>明確缺漏</h3><ul>' + ''.join('<li>' + esc(g['label'] + '：' + g['reason']) + '</li>' for g in entry['knowledge_gaps']) + '</ul></section>'
     if entry["guide_claims"]:
-        content += '<section><h3>攻略補充（來源分列，待驗收）</h3><p class="muted">人工整理草稿；不代表官方解鎖邏輯或遊戲實測。</p>'
+        content += '<section><h3>攻略補充</h3>'
         for claim in entry["guide_claims"]:
             kind_label = {"wiki": "Wiki 攻略", "third_party_analysis": "第三方分析", "player_test": "玩家實測"}[claim["source_class"]]
             content += '<h4>' + esc(claim["label"]) + ' · ' + kind_label + '</h4><p>' + esc(claim["text_zh"]) + '</p>'
@@ -114,9 +112,10 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
     if entry["guide_gaps"]:
         content += '<section><h3>攻略尚缺資料</h3><ul>' + ''.join('<li>' + esc(g["label"] + '：' + g["reason"]) + '</li>' for g in entry["guide_gaps"]) + '</ul></section>'
     for extract in entry["research_extracts"]:
-        content += '<section><h3>自動擷取的英文候選（待翻譯與人工審核）</h3><p class="muted">有實質段落不代表攻略完整；不同來源尚未調和。</p>'
+        content += '<section><h3>英文擷取內容</h3>'
         content += '<ul>' + ''.join('<li>' + esc(b["label"] + '：' + b["text_en"]) + '</li>' for b in extract["blocks"]) + '</ul>'
-        content += '<p class="missing">未擷取欄位：' + esc('、'.join(extract["missing_labels"])) + '</p>' + source_html(extract["source"]) + '</section>'
+        content += '<p class="missing">未擷取欄位：' + esc('、'.join(extract["missing_labels"])) + '</p>'
+        content += '<details><summary>來源明細</summary>' + source_html(extract["source"]) + '</details></section>'
     if entry["relations"]:
         content += '<section><h3>相關條目</h3><ul class="related">'
         for related in entry["relations"]:
@@ -128,6 +127,7 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
     if entry["missing_topics"]:
         content += '<p class="missing">待補資料：' + esc('、'.join(entry["missing_topics"])) + '</p>'
     content += '<details><summary>原文、數值與實際來源</summary>'
+    content += '<p>適用版本：' + esc(entry['game_version']) + '</p>'
     if entry["aliases"]:
         content += '<p>別名：' + esc('、'.join(dict.fromkeys(entry["aliases"]))) + '</p>'
     if entry["statistics"]:
@@ -169,7 +169,7 @@ def render_page(model: dict[str, Any]) -> str:
             else:
                 text += ' · 尚未保存知識 · ' + esc(target['gap_reason'] or '仍待取得及整理來源')
             content += '<li>' + text + '</li>'
-        content += '</ul><p>已有知識修訂不代表內容完整、人工驗收通過或已發布。</p></details>'
+        content += '</ul></details>'
     content += '<form method="get" action="/"><label class="search">中英文、別名或內容<input name="q" value="' + esc(options["q"]) + '" maxlength="200" placeholder="搜尋中文、English 或別名"></label><label>分類<select name="kind">'
     for value, label in KINDS.items():
         content += '<option value="' + value + '"' + (' selected' if options["kind"] == value else '') + '>' + label + '</option>'
