@@ -69,3 +69,13 @@ uv run --no-sync python -m ssr_knowledge catalog --data-dir C:\private\peak serv
 獨立 SQLite 讀取、新 CLI 程序及 HTTP API 已逐筆核對，唯讀查詢前後 DB SHA-256 相同。已在安裝版 Chrome 的獨立 headless 工作階段實際操作搜尋、分類、證據展開、關聯跳轉、重新讀取與缺漏清單，並檢視畫面截圖。這是程式／瀏覽器驗證，使用者內容驗收仍待進行。
 
 官方更新是第 13 個尚未保存的目標：來源取得／用途限制未解除；其他已存條目仍有明列的欄位缺漏，單一 Wiki 資料不代表完整攻略或官方事實。原文、草稿、DB、瀏覽器觀測與逐筆驗證檔只留本機，不入 Git。
+
+## 2026-10-21 攀登與生存續批
+
+依 collector 的 [peak-survival-v1 計畫](https://github.com/HGPT-StreamSuite/ssr-collector-peak/blob/codex/collector-acceptance/docs/peak-survival-plan.md)，在原來同一個本機 DB 新增 29 筆（15 道具、4 機制、4 狀態、6 攻略），補強 4 筆既有條目。20 份 PEAK Wiki 搜尋索引摘錄經獨立 collector 輸出共同檔案，再由保存端收納來源及交易匯入知識；來源取得方式記為摘錄，未記為完整網頁。
+
+目前 DB：41 條目、46 修訂、21 快照、148 個有證據欄位、16 個明列缺欄及 32 條目前關聯。原有 13 個歷史修訂全部保留，未修改的 8 個條目仍指向原 revision；41 筆維持 pending_review。新計畫 29／29 個目標有知識修訂，與原計畫 12／13 分開顯示。
+
+全部條目已經獨立 SQLite、新 CLI 程序、同一 DB 的 HTTP API 及 Chrome 頁面逐筆核對：revision、欄位值、缺欄、來源引文／snapshot ID 與雙向關聯一致。另操作分頁、分類、搜尋與重新讀取，查詢前後 DB SHA-256 相同。畫面的欄位引用與關聯引用均預設收合，主要內容保留操作與數值。
+
+驗收入口仍為 `http://127.0.0.1:8767/`。選「道具」應見 16 筆；選「攻略」應見 7 筆。開「使用解毒劑處理中毒」，點「解毒劑」再點回攻略，確認相同 DB 的內容與關聯。來源資料、私有交接包、草稿和備份都保留在 checkout 外。
