@@ -97,6 +97,12 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
     result.update(knowledge_fields=[], knowledge_gaps=[], plan_id=None, category_label=payload['category'])
     knowledge = payload.get('knowledge_details')
     if knowledge:
+        # Legacy organization describes the original Items table only. A field
+        # saved later in the same revision must not still be called missing.
+        saved_topics = {'purpose': 'effects', 'acquisition': 'acquisition',
+                        'constraints': 'conditions', 'cooking': 'cooking'}
+        provided_labels = {LABELS[saved_topics[key]] for key in knowledge['fields'] if key in saved_topics}
+        result['missing_topics'] = [label for label in result['missing_topics'] if label not in provided_labels]
         from .game_plan import get_plan
         plan = get_plan(store, knowledge['plan_id'])
         category = next(c for c in plan['categories'] if c['id'] == payload['category'])

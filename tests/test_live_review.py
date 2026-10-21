@@ -158,6 +158,33 @@ class LiveReviewTests(unittest.TestCase):
         status, page, _ = self.request('/?' + urlencode({'q': '新別名', 'entry': self.item['entry_id']}))
         self.assertEqual(status, 200); self.assertIn('更新後月光繩捲', page)
 
+    def test_saved_planned_field_resolves_legacy_missing_label_without_hiding_gaps(self):
+        from ssr_knowledge.game_plan import register_plan
+        from test_game_plan import plan
+        before = self.api(entry=self.item['entry_id'])['detail']
+        self.assertIn('取得方式', before['missing_topics'])
+        planned = plan()
+        planned['targets'] = [{**planned['targets'][0], 'entry_id': self.item['entry_id']}]
+        planned['categories'][0].update(allowed_source_types=['wiki'], fields=[
+            {'id': 'acquisition', 'label': '取得方式', 'type': 'string', 'unit': None},
+            {'id': 'constraints', 'label': '使用限制', 'type': 'string', 'unit': None}])
+        register_plan(self.store, planned)
+        revised = copy.deepcopy(self.item)
+        revised['knowledge_details'] = {'plan_id': planned['plan_id'], 'fields': {
+            'acquisition': {'value': 'Crash Site', 'evidence': [{'citation': 0, 'quote': 'Crash Site'}]}},
+            'gaps': {'constraints': 'This synthetic source does not provide a use limit.'}}
+        saved = self.store.import_drafts({'entries': [revised]})[0]
+        after = self.api(entry=self.item['entry_id'])['detail']
+        self.assertEqual(after['revision_id'], saved['revision_id'])
+        self.assertNotIn('取得方式', after['missing_topics'])
+        self.assertIn('使用限制', after['missing_topics'])
+        self.assertEqual(after['knowledge_fields'][0]['value'], 'Crash Site')
+        self.assertEqual(after['knowledge_gaps'][0]['id'], 'constraints')
+        status, page, _ = self.request('/?' + urlencode({'entry': self.item['entry_id']}))
+        self.assertEqual(status, 200)
+        self.assertNotIn('待補資料：取得方式', page)
+        self.assertIn('This synthetic source does not provide a use limit.', page)
+
     def test_database_disappears_or_wrong_schema_reports_error_without_cached_data(self):
         self.api()
         self.store.close()
