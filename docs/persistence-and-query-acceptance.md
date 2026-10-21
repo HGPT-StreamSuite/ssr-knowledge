@@ -1,5 +1,7 @@
 # 從擷取檔案到待審保存與直接 DB 驗收
 
+2026-10-21 家裡端後續：已在原本 228 條目 DB 合併本批待審補充，現為 244 條目／665 修訂，見 [合併與直接讀回紀錄](home-merge-acceptance.md)。下方新機與舊機未搬入的描述為當時基線。
+
 2026-10-21 實作更新：分類計畫、typed 欄位、逐欄證據及一般有向關聯已落地，見 [遊戲計畫契約及真實本機驗證](game-plan-contract-v1.md)。下方歷史基線不代表本輪新 DB 的現況；本輪新庫已有 12 個真實待審條目，舊主機 DB 未移轉。
 
 本規格落實 [knowledge issue #5](https://github.com/HGPT-StreamSuite/ssr-knowledge/issues/5) 的保存與查詢責任。遊戲基本構成、自己的分類／條目／欄位／關聯及來源對應，統一依 [collector 規劃規格](https://github.com/HGPT-StreamSuite/ssr-collector-peak/blob/codex/collector-acceptance/docs/game-knowledge-planning.md) 與 [issue #1](https://github.com/HGPT-StreamSuite/ssr-collector-peak/issues/1)，不另訂一套遊戲分類。
