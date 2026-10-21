@@ -1,5 +1,7 @@
 # 統一文件交接契約 ssr.collection.v1
 
+本頁定義 A 到 B 的共同文件格式；B 還須整理並實際保存待審知識，C 再直接查同一 DB 驗收。完整執行順序與逐筆完成條件見 [保存與查詢驗收](persistence-and-query-acceptance.md)。文件接收成功不代表知識修訂已保存。
+
 ## 實際接收格式：必要欄位
 
 下表對應 本 repo 的 `collection_handoff.validate_bundle`；這是已實作的文件封裝，並非模型答案或知識修訂包。
