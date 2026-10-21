@@ -172,7 +172,11 @@ class HandoffTests(unittest.TestCase):
             'method':'local_chrome_computer_use','http_status':None})
         rehash(value)
         self.assertEqual(ingest_collection(self.store,self.write(value))['state'],'validated_only')
-        for field,changed in [('http_status',200),('raw_sha256','0'*64),('final_url','https://example.test/other')]:
+        alternate=copy.deepcopy(value)
+        alternate['document']['metadata']['capture_receipt'].update(method='local_chrome_playwright',export_format='rendered_text_html')
+        rehash(alternate)
+        self.assertEqual(ingest_collection(self.store,self.write(alternate))['state'],'validated_only')
+        for field,changed in [('http_status',200),('raw_sha256','0'*64),('final_url','https://example.test/other'),('method','guessed_browser')]:
             bad=copy.deepcopy(value);bad['document']['metadata']['capture_receipt'][field]=changed;rehash(bad)
             with self.subTest(field=field),self.assertRaises(ContractError):ingest_collection(self.store,self.write(bad))
         denied=copy.deepcopy(cfg);denied['policy']['uses']['local_cache']['status']='prohibited';register_file_source(self.store,denied)

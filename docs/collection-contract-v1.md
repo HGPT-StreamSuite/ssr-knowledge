@@ -4,6 +4,8 @@
 
 ## 實際接收格式：必要欄位
 
+瀏覽器觀測新增 `method=local_chrome_playwright`，與原有 `local_chrome_computer_use` 分列，避免把自動化驗證描述為人工點擊。`export_format=rendered_text_html` 表示明確選定段落的純文字 HTML；原 `rendered_dom_html` 表示選定文章 DOM。scope 記錄挑選範圍，HTTP 狀態仍保留 null，檔案雜湊／exact URL／中央許可檢查相同。
+
 下表對應 本 repo 的 `collection_handoff.validate_bundle`；這是已實作的文件封裝，並非模型答案或知識修訂包。
 
 | 層級 | 必要欄位與型別 | 實際語意／限制 |
