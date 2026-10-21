@@ -38,4 +38,3 @@ uv --offline run --no-sync python -m ssr_knowledge catalog --data-dir C:\private
 ```
 
 本輪真實 Wiki 採集限制已另記錄；上述範例與可選 adapter 不構成真站端到端通過，也沒有把新查得資料存成真實知識修訂。
-
