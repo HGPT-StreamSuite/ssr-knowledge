@@ -16,7 +16,7 @@ from .store import ID_PATTERN, utc_now
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_TYPES = {"official", "wiki", "third_party_analysis", "player_test"}
-CATEGORIES = {"mechanic", "item", "status", "guide", "lore", "location", "creature", "achievement", "update", "support"}
+CATEGORIES = {"introduction", "review", "mode", "character", "mechanic", "item", "status", "guide", "lore", "location", "creature", "achievement", "update", "support"}
 USAGE_PURPOSES = {"local_cache", "search_index", "ai_input", "ai_train"}
 
 
@@ -263,10 +263,10 @@ class Catalog:
                  "event": row["event"], "details": json.loads(row["details_json"])}
                 for row in self.db.execute("SELECT * FROM events ORDER BY event_id DESC LIMIT ?", (limit,))]
 
-    def _validate_draft(self, value: Any) -> dict[str, Any]:
+    def _validate_draft(self, value: Any, lookup: Any = None) -> dict[str, Any]:
         fields = {"entry_id", "game", "category", "name_en", "name_zh", "aliases", "summary_zh",
                   "evidence_class", "citations", "editor", "game_version", "limitations"}
-        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details", "names", "organization", "badge_details", "links", "detail_page", "guide_details", "research_extracts"}:
+        if not isinstance(value, dict) or not fields <= set(value) or set(value) - fields - {"taxonomy", "item_details", "names", "organization", "badge_details", "links", "detail_page", "guide_details", "research_extracts", "knowledge_details", "knowledge_links"}:
             raise ContractError("draft must contain exactly the documented fields")
         identifier(value["entry_id"])
         if value["game"] != "PEAK:3527290" or value["category"] not in CATEGORIES:
@@ -317,7 +317,11 @@ class Catalog:
         from .organization import validate_organization, validate_badge, validate_links
         validate_organization(value)
         validate_badge(value, name_snapshots, lambda sid: self.db.execute("SELECT raw FROM snapshots WHERE snapshot_id=?", (sid,)).fetchone()[0])
-        validate_links(value, lambda eid: self.entry(eid)["entry"], name_snapshots)
+        lookup = lookup or (lambda eid: self.entry(eid)["entry"])
+        validate_links(value, lookup, name_snapshots)
+        from .game_plan import validate_details, validate_relations
+        validate_details(self, value, name_snapshots)
+        validate_relations(self, value, lookup, name_snapshots)
         from .guide_details import validate_guide
         validate_guide(value, name_snapshots)
         from .research import validate_extracts
@@ -329,12 +333,36 @@ class Catalog:
             raise ContractError("draft bundle must be an object containing entries array")
         if not 1 <= len(drafts["entries"]) <= 100:
             raise ContractError("import one to one hundred drafts at a time")
-        values = [self._validate_draft(item) for item in drafts["entries"]]
-        ids = [item["entry_id"] for item in values]
+        ids = [identifier(item.get("entry_id")) if isinstance(item, dict) else identifier(None) for item in drafts["entries"]]
         if len(ids) != len(set(ids)):
             raise ContractError("entry_id must be unique within an import")
+        batch = dict(zip(ids, drafts["entries"]))
+        def lookup(eid: str) -> dict:
+            if eid in batch:
+                historical = self.db.execute('SELECT 1 FROM entry_revisions WHERE entry_id=? AND payload_sha256=?',
+                                             (eid, digest(canonical(batch[eid])))).fetchone()
+                if not historical:
+                    return batch[eid]
+            # A duplicate historical payload does not replace the current head.
+            return self.entry(eid)["entry"]
         results = []
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            # Validate all targets before any row is inserted. This supports
+            # forward links in one atomic batch without leaving placeholder rows.
+            values = [self._validate_draft(item, lookup) for item in drafts["entries"]]
+            from .game_plan import validate_relations
+            checked = set()
+            for eid in ids:
+                for row in self.db.execute('''SELECT r.entry_id FROM entry_relations l
+                    JOIN entry_revisions r USING(revision_id) JOIN entries e ON e.current_revision=r.revision_id
+                    WHERE l.target_entry_id=? AND l.kind LIKE 'planned:%' ''', (eid,)):
+                    if row[0] not in checked:
+                        origin = lookup(row[0])
+                        snapshots = {c['snapshot_id']: self.snapshot(c['snapshot_id'], True) for c in origin['citations']}
+                        validate_relations(self, origin, lookup, snapshots)
+                        checked.add(row[0])
+            self.db.executemany("INSERT OR IGNORE INTO entries(entry_id) VALUES(?)", [(eid,) for eid in ids])
             for value in values:
                 payload = canonical(value)
                 old = self.db.execute("SELECT revision_id,status FROM entry_revisions WHERE entry_id=? AND payload_sha256=?",
@@ -352,6 +380,8 @@ class Catalog:
                     search += " " + normalize(value["badge_details"]["condition_en"] + " " + value["badge_details"]["condition_zh"])
                 from .guide_details import guide_search_text
                 search += " " + normalize(guide_search_text(value))
+                from .game_plan import search_text
+                search += " " + normalize(search_text(value))
                 search += " " + normalize(" ".join(b["text_en"] for extract in value.get("research_extracts", []) for b in extract["blocks"]))
                 cur = self.db.execute("""INSERT INTO entry_revisions(entry_id,payload_json,payload_sha256,search_text,created_at,status)
                     VALUES(?,?,?,?,?,'pending_review')""", (value["entry_id"], payload, digest(payload), search, utc_now()))
@@ -362,6 +392,9 @@ class Catalog:
                 self.db.executemany("INSERT INTO entry_relations VALUES(?,?,?,?,?,?)",
                                     [(revision, link["target_entry_id"], link["kind"], link["citation"], link["note_index"], link["evidence_text"])
                                      for link in value.get("links", [])])
+                self.db.executemany("INSERT INTO entry_relations VALUES(?,?,?,?,?,?)",
+                                    [(revision, link["target_entry_id"], "planned:" + link["kind"], link["citation"], None, link["evidence_text"])
+                                     for link in value.get("knowledge_links", [])])
                 results.append({"entry_id": value["entry_id"], "revision_id": revision,
                                 "state": "saved", "status": "pending_review"})
             self.db.execute("INSERT INTO events(at,event,details_json) VALUES(?, 'draft_import', ?)",
@@ -438,7 +471,7 @@ class Catalog:
             target = self.entry(other)
             value.update({"direction": "outgoing" if row["source_entry_id"] == entry_id else "incoming",
                           "related_entry_id": other, "related_names": target["display_names"], "related_status": target["status"],
-                          "evidence_state": "partial_item_hint" if row["kind"] == "badge_hint" else "official_condition_mention"})
+                          "evidence_state": "planned_editorial_claim" if row["kind"].startswith("planned:") else "partial_item_hint" if row["kind"] == "badge_hint" else "official_condition_mention"})
             result.append(value)
         return {"scope": "review_preview", "entry_id": entry_id, "relations": result}
 
@@ -494,6 +527,11 @@ class Catalog:
                 # A published source must not reveal identifiers/evidence from a
                 # linked pending/rejected/stale target. Inspect the graph privately.
                 item["entry"].pop("links", None)
+                item["entry"].pop("knowledge_links", None)
+                # Private anchors are for review, not published search output.
+                if "knowledge_details" in item["entry"]:
+                    detail = item["entry"]["knowledge_details"]
+                    item["entry"]["knowledge_details"] = {**detail, "fields": {k: {"value": v["value"]} for k, v in detail["fields"].items()}}
             item["entry"]["citations"] = [{k: v for k, v in c.items() if k != "evidence_quote"}
                                           for c in item["entry"]["citations"]]
             item["name_matches"] = exact_names

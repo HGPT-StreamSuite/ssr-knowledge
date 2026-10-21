@@ -6,6 +6,8 @@
 
 ## 即時 DB 驗收入口
 
+已實作 [遊戲建庫計畫與分類欄位](docs/game-plan-contract-v1.md)：`register-game-plan` 保存不可變的計畫版本，`import-drafts` 驗證分類、欄位型別、逐欄證據／缺漏與有方向的關聯，`game-plan-status` 和即時頁面直接讀 DB 顯示進度。本輪新本機 DB 已保存 12 個真實待審條目；舊主機資料庫未移轉，完整程度與官方來源限制另見契約中的實測紀錄。
+
 使用 `catalog --data-dir PATH serve-review` 啟動 `http://127.0.0.1:8765/`。每次搜尋、翻頁與開條目都重新唯讀查詢實際 SQLite，顯示 DB 路徑及讀取時間；有中英文／別名搜尋、分類、來源與徽章關聯。資料庫失敗時直接報錯，不改用示範或上次資料。啟停、狀態與驗收步驟見 [即時唯讀驗收](docs/live-review.md)。舊 HTML 匯出僅保留作快照。
 
 詳細來源可用 [有界批次採集](docs/research-batches.md) 保存逐條進度、失敗分類、有限重試及英文待審擷取；[PEAK 詳頁可行性結果](docs/peak-detail-feasibility.md) 分開記錄合成流程測試、真實存取阻擋與人工索引候選。目前沒有通過全庫原站採集的可行性驗證。

@@ -18,7 +18,7 @@ def esc(value: Any) -> str:
 
 
 def link(options: dict[str, Any], **changes: Any) -> str:
-    values = {"q": options.get("q", ""), "kind": options.get("kind", "all"), "page": options.get("page", 1), "page_size": options.get("page_size", 20)}
+    values = {"q": options.get("q", ""), "kind": options.get("kind", "all"), "category": options.get('category', 'all'), "page": options.get("page", 1), "page_size": options.get("page_size", 20)}
     if options.get("entry_id"):
         values["entry"] = options["entry_id"]
     values.update(changes)
@@ -60,12 +60,24 @@ def source_html(source: dict[str, Any]) -> str:
         content += '<p>引用位置：' + esc(source["locator"]) + '</p>'
     if source.get("evidence_quote"):
         content += '<p>定位短引文：' + esc(source["evidence_quote"]) + '</p>'
+    if source.get('snapshot_id'):
+        content += '<p class="path">來源快照：' + esc(source['snapshot_id']) + '</p>'
+    if source.get('license_statement'):
+        content += '<p>' + esc(source['license_statement']) + '</p>'
+    for license_link in source.get('license_links', []):
+        if safe_url(license_link['href']):
+            content += '<p><a href="' + esc(license_link['href']) + '" target="_blank" rel="noreferrer">' + esc(license_link['text']) + '</a></p>'
     return content + '</div>'
 
 
 def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
     content = '<a class="button" href="' + esc(link(options, entry=None)) + '">返回結果</a><article class="detail"><header><h2>' + esc(entry["name_zh"]) + '</h2><p class="english">' + esc(entry["name_en"]) + '</p><small>' + esc(entry["name_label"]) + '</small></header>'
     content += '<p class="status">' + esc(entry["review_label"]) + '</p><p class="status">' + esc(entry["source_label"]) + '</p>'
+    content += '<p class="path">' + esc(entry['entry_id']) + ' · revision ' + str(entry['revision_id']) + '</p>'
+    if entry.get('plan_id'):
+        content += '<p>建庫計畫：' + esc(entry['plan_id']) + ' · ' + esc(entry['category_label']) + '</p>'
+    content += '<p class="muted">適用版本：' + esc(entry['game_version']) + '</p>'
+    content += '<p class="warning">' + esc(entry.get('limitations', '')) + '</p>'
     if entry["stale"]:
         content += '<p class="warning">引用來源已有更新；此處顯示條目保存的版本。</p>'
     detail = entry["detail_page"]
@@ -77,6 +89,18 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
     for section in entry["sections"]:
         if section["notes"]:
             content += '<section><h3>' + esc(section["label"]) + '</h3><ul>' + ''.join('<li>' + esc(n) + '</li>' for n in section["notes"]) + '</ul></section>'
+    if entry.get('knowledge_fields'):
+        content += '<section><h3>分類欄位（DB 保存值）</h3>'
+        for field in entry['knowledge_fields']:
+            value = '、'.join(field['value']) if isinstance(field['value'], list) else str(field['value'])
+            content += '<h4>' + esc(field['label']) + '</h4><p>' + esc(value) + (' ' + esc(field['unit']) if field['unit'] else '') + '</p>'
+            content += '<details><summary>欄位來源證據</summary>'
+            for evidence in field['evidence']:
+                content += '<p>' + esc(evidence['quote']) + '</p>' + source_html(evidence['source'])
+            content += '</details>'
+        content += '</section>'
+    if entry.get('knowledge_gaps'):
+        content += '<section><h3>明確缺漏</h3><ul>' + ''.join('<li>' + esc(g['label'] + '：' + g['reason']) + '</li>' for g in entry['knowledge_gaps']) + '</ul></section>'
     if entry["guide_claims"]:
         content += '<section><h3>攻略補充（來源分列，待驗收）</h3><p class="muted">人工整理草稿；不代表官方解鎖邏輯或遊戲實測。</p>'
         for claim in entry["guide_claims"]:
@@ -134,9 +158,25 @@ def render_page(model: dict[str, Any]) -> str:
     content += '</div><p class="counts">' + str(counts["entries"]) + ' 條目 · 道具 ' + str(counts["items"]) + '（' + str(counts["organized_items"]) + ' 份詳細表） · 遊戲徽章 ' + str(counts["game_badges"]) + ' · 其他 ' + str(counts["other"]) + '</p>'
     if not counts["entries"]:
         content += '<p class="warning">這個 DB 沒有目前條目，請確認上方資料庫路徑。</p>'
+    for plan in model.get('plans', []):
+        content += '<details class="plan"><summary>建庫計畫 ' + esc(plan['plan_id']) + '：' + str(plan['saved_targets']) + '／' + str(plan['target_count']) + ' 個目標已有知識修訂</summary>'
+        content += '<p>' + esc(plan['analysis']['core_loop']) + '</p><p>' + esc(plan['analysis']['structure']) + '</p><p>' + esc(plan['analysis']['version_policy']) + '</p><ul>'
+        for target in plan['targets']:
+            text = esc(target['name'])
+            if target['revision_id'] is not None:
+                text = '<a href="' + esc('/?' + urlencode({'entry': target['entry_id']})) + '">' + text + '</a>'
+                text += ' · revision ' + str(target['revision_id']) + ' · ' + esc(target['review_status']) + ' · ' + str(target['field_count']) + ' 欄已存／' + str(len(target['gaps'])) + ' 欄缺漏'
+            else:
+                text += ' · 尚未保存知識 · ' + esc(target['gap_reason'] or '仍待取得及整理來源')
+            content += '<li>' + text + '</li>'
+        content += '</ul><p>已有知識修訂不代表內容完整、人工驗收通過或已發布。</p></details>'
     content += '<form method="get" action="/"><label class="search">中英文、別名或內容<input name="q" value="' + esc(options["q"]) + '" maxlength="200" placeholder="搜尋中文、English 或別名"></label><label>分類<select name="kind">'
     for value, label in KINDS.items():
         content += '<option value="' + value + '"' + (' selected' if options["kind"] == value else '') + '>' + label + '</option>'
+    content += '</select></label><label>知識分類<select name="category" aria-label="知識分類"><option value="all">全部分類</option>'
+    categories = {c['id']: c['label'] for p in model.get('plans', []) for c in p['categories']}
+    for value, label in categories.items():
+        content += '<option value="' + esc(value) + '"' + (' selected' if options.get('category') == value else '') + '>' + esc(label) + '</option>'
     content += '</select></label><input type="hidden" name="page_size" value="' + str(options["page_size"]) + '"><button class="primary" type="submit">查詢</button><a class="button" href="' + esc(link(options)) + '">重新讀取 DB</a></form>'
     if model["detail"]:
         content += detail_html(model["detail"], options)
@@ -148,7 +188,7 @@ def render_page(model: dict[str, Any]) -> str:
         content += '<div class="cards">'
         for entry in model["entries"]:
             url = link(options, entry=entry["entry_id"])
-            content += '<article class="card"><h2><a href="' + esc(url) + '">' + esc(entry["name_zh"]) + '</a></h2><p class="english">' + esc(entry["name_en"]) + '</p><span class="tag">' + esc(KINDS[entry["kind"]]) + '</span><small>' + esc(entry["review_label"]) + '</small>'
+            content += '<article class="card"><h2><a href="' + esc(url) + '">' + esc(entry["name_zh"]) + '</a></h2><p class="english">' + esc(entry["name_en"]) + '</p><span class="tag">' + esc(entry['category_label'] if entry.get('plan_id') else KINDS[entry["kind"]]) + '</span><small>' + esc(entry["review_label"]) + '</small>'
             if entry["teaser"]:
                 teaser = entry["teaser"]
                 content += '<p class="teaser">' + esc(teaser[:180] + ('…' if len(teaser) > 180 else '')) + '</p>'

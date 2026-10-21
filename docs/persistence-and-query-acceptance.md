@@ -1,5 +1,7 @@
 # 從擷取檔案到待審保存與直接 DB 驗收
 
+2026-10-21 實作更新：分類計畫、typed 欄位、逐欄證據及一般有向關聯已落地，見 [遊戲計畫契約及真實本機驗證](game-plan-contract-v1.md)。下方歷史基線不代表本輪新 DB 的現況；本輪新庫已有 12 個真實待審條目，舊主機 DB 未移轉。
+
 本規格落實 [knowledge issue #5](https://github.com/HGPT-StreamSuite/ssr-knowledge/issues/5) 的保存與查詢責任。遊戲基本構成、自己的分類／條目／欄位／關聯及來源對應，統一依 [collector 規劃規格](https://github.com/HGPT-StreamSuite/ssr-collector-peak/blob/codex/collector-acceptance/docs/game-knowledge-planning.md) 與 [issue #1](https://github.com/HGPT-StreamSuite/ssr-collector-peak/issues/1)，不另訂一套遊戲分類。
 
 **完成是：擷取檔案 → 保存原文 → 整理並寫入待審修訂 → 新程序讀回 → 輸入查詢條件、直接查同一 DB、顯示實際結果。** 找到的可用補充資料應走完這條路；查證紀錄、待辦、文件快照及測試通過均不能替代知識保存。
@@ -65,9 +67,9 @@ uv --offline run --no-sync python -m ssr_knowledge catalog --data-dir C:\private
 本規格是工作流程與 DoD，並非宣稱現有程式已自動執行全部步驟：
 
 - 尚無自動遊戲根分析／規劃器或完整的逐欄進度帳。
-- 現有 draft 驗證限 PEAK:3527290 及固定 category 集合。介紹、評價、角色／模式等規劃類型不是已支援的通用 schema；遇到不相符資料應先擴充與驗證，不借用不相符分類。評價的作者／立場與官方事實、更新公告的版本影響均須按規劃保留。
+- 現有 draft 驗證仍限 PEAK:3527290；介紹、評價、角色／模式已納入，並以已登記的 game plan 驗證本批目標與欄位。其他遊戲或超出受支援分類仍需明確擴充。
 - v1 文件包沒有 typed tables 或多頁陣列，也不自動產生草稿。
-- 現有 links 僅支援 badge_hint 與 condition_mentions_item；後者驗證官方徽章條件，不能拿來保存來源不同的 Wiki 攻略前置物品集合。新關聯須先補規格、驗證與顯示能力，再寫入真實資料。
-- 當前本機只有已跑通的合成文件交接 DB，原環境正式 DB 尚未搬入；原環境 228 條目／624 修訂是歷史紀錄，不能當作本機最新查詢結果。
+- 舊 links 保留 badge_hint 與 condition_mentions_item 的嚴格驗證；新的 knowledge_links 按遊戲計畫驗證一般有向關聯及逐項引用。來源未命名的攻略物品集合仍不得猜補。
+- 當前本機另有新的真實持久 DB，已有 12 個待審條目及逐筆讀回／畫面驗證；原環境正式 DB 尚未搬入。原環境 228 條目／624 修訂是歷史紀錄，不能當作本機最新查詢結果。
 
 本輪若找到且有權使用的補充資料，應完成 B 寫入及 C 讀回；只有缺少指定 DB、來源取得受限或驗證能力不足等真實阻塞才保留未完成，記錄最後完成階段及具體原因。**不因文件規格、合成測試或 issue 更新完成，就將真實資料驗收勾選完成。**

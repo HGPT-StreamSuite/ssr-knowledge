@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from .catalog import Catalog, digest, identifier, normalize, resolve_data_dir
+from .catalog import CATEGORIES, Catalog, digest, identifier, normalize, resolve_data_dir
 from .contracts import ContractError
 from .names import display_names, name_key, name_records
 from .review_page import LABELS, short_note
@@ -32,7 +32,10 @@ def project_source(value: dict[str, Any], citation: dict[str, Any] | None = None
     kind = cfg.get("acquisition", {}).get("kind", meta.get("acquisition_kind", "saved_source"))
     local = kind == "installed_game_text"
     receipt = meta.get("receipt", {})
+    browser_receipt = meta.get('capture_receipt', {})
     return {"title": cfg["title"], "type": cfg["source_type"], "language": cfg.get("language"),
+            "source_id": value['source_id'], "snapshot_id": value['snapshot_id'],
+            "license_statement": browser_receipt.get('license_statement'), "license_links": browser_receipt.get('license_links', []),
             "url": None if local else value["provenance"]["original_url"],
             "attribution_url": value["provenance"]["original_url"] if local else None,
             "acquisition_uri": cfg["url"], "acquisition_kind": kind,
@@ -91,6 +94,21 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
               "detail_page": detail_status if payload["category"] == "item" else None, "sections": sections, "missing_topics": missing,
               "guide_claims": guide_claims, "guide_gaps": guide_gaps, "research_extracts": extracts,
               "teaser": next((("" if s["label"] in {"用途與效果", "已保存摘要"} else s["label"] + "：") + s["notes"][0] for s in sections if s["notes"]), "")}
+    result.update(knowledge_fields=[], knowledge_gaps=[], plan_id=None, category_label=payload['category'])
+    knowledge = payload.get('knowledge_details')
+    if knowledge:
+        from .game_plan import get_plan
+        plan = get_plan(store, knowledge['plan_id'])
+        category = next(c for c in plan['categories'] if c['id'] == payload['category'])
+        result.update(plan_id=plan['plan_id'], category_label=category['label'])
+        for field in category['fields']:
+            key = field['id']
+            if key in knowledge['fields']:
+                saved = knowledge['fields'][key]
+                result['knowledge_fields'].append({**field, 'value': saved['value'],
+                    'evidence': [{'quote': e['quote'], 'source': sources[e['citation']]} for e in saved['evidence']]})
+            else:
+                result['knowledge_gaps'].append({'id': key, 'label': field['label'], 'reason': knowledge['gaps'][key]})
     if detailed:
         related = {}
         for link in store.relations(payload["entry_id"])["relations"]:
@@ -99,6 +117,12 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
             other = related.setdefault(eid, {"entry_id": eid, "name_zh": link["related_names"].get("zh-TW", {}).get("text", target["name_zh"]),
                                              "name_en": link["related_names"].get("en", {}).get("text", ""), "evidence": [], "evidence_details": []})
             label = "Items 備註提示" if link["kind"] == "badge_hint" else "官方條件提及"
+            if link['kind'].startswith('planned:'):
+                from .game_plan import get_plan
+                origin_payload = store.entry(link['source_entry_id'], link['revision_id'])['entry']
+                origin_plan = get_plan(store, origin_payload['knowledge_details']['plan_id'])
+                definition = next(r for r in origin_plan['relation_types'] if r['id'] == link['kind'].removeprefix('planned:'))
+                label = ('本條目 → ' if link['direction'] == 'outgoing' else '本條目 ← ') + definition['label'] + '（待審證據）'
             if label not in other["evidence"]:
                 other["evidence"].append(label)
             origin = store.entry(link["source_entry_id"], link["revision_id"])
@@ -109,6 +133,7 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
                 "text_zh": translation[note] if isinstance(note, int) and note < len(translation) else None,
                 "source": project_source(origin["sources"][index], origin["entry"]["citations"][index])})
         result.update({"aliases": payload["aliases"], "sources": sources, "relations": list(related.values()),
+                       "limitations": payload['limitations'],
                        "game_version": payload["game_version"], "saved_at": record["created_at"],
                        "statistics": payload.get("item_details", {}).get("statistics", {}),
                        "notes_en": payload.get("item_details", {}).get("notes_en", []),
@@ -121,11 +146,14 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
 
 def query_options(query: str) -> dict[str, Any]:
     values = parse_qs(query, keep_blank_values=True)
-    if set(values) - {"q", "kind", "page", "page_size", "entry"} or any(len(v) != 1 for v in values.values()):
+    if set(values) - {"q", "kind", "category", "page", "page_size", "entry"} or any(len(v) != 1 for v in values.values()):
         raise ValueError("查詢參數不支援或重複")
     q, kind, entry = (values.get(k, [default])[0] for k, default in (("q", ""), ("kind", "all"), ("entry", "")))
     if len(q) > 200 or kind not in {"all", "item", "badge", "other"}:
         raise ValueError("搜尋最多 200 字；分類必須為全部、道具、徽章或其他")
+    category = values.get('category', ['all'])[0]
+    if category not in CATEGORIES | {'all'}:
+        raise ValueError('不支援的知識分類')
     try:
         page, size = int(values.get("page", ["1"])[0]), int(values.get("page_size", ["20"])[0])
     except ValueError as exc:
@@ -134,7 +162,7 @@ def query_options(query: str) -> dict[str, Any]:
         raise ValueError("頁碼或每頁筆數超出範圍")
     if entry:
         identifier(entry)
-    return {"q": q, "kind": kind, "page": page, "page_size": size, "entry_id": entry or None}
+    return {"q": q, "kind": kind, "category": category, "page": page, "page_size": size, "entry_id": entry or None}
 
 
 def load_model(data_dir: Path, options: dict[str, Any]) -> dict[str, Any]:
@@ -156,6 +184,8 @@ def load_model(data_dir: Path, options: dict[str, Any]) -> dict[str, Any]:
             states[row["status"]] = states.get(row["status"], 0) + 1
             if options["kind"] != "all" and kind != options["kind"]:
                 continue
+            if options.get('category', 'all') != 'all' and payload['category'] != options['category']:
+                continue
             exact = bool(q) and any(name_key(n["text"]) == compact for n in name_records(payload))
             if q and not exact and q not in row["search_text"]:
                 continue
@@ -175,7 +205,8 @@ def load_model(data_dir: Path, options: dict[str, Any]) -> dict[str, Any]:
                     "counts": counts, "review_states": states,
                     "revision_count": store.db.execute("SELECT count(*) FROM entry_revisions").fetchone()[0],
                     "relation_count": store.db.execute("SELECT count(*) FROM entry_relations").fetchone()[0]}
-        return {"metadata": metadata, "view": "detail" if detail else "list", "query": {**options, "page": page}, "total_matches": len(candidates), "pages": pages,
+        from .game_plan import coverage
+        return {"metadata": metadata, "plans": coverage(store), "view": "detail" if detail else "list", "query": {**options, "page": page}, "total_matches": len(candidates), "pages": pages,
                 "exact_name_entry_ids": [eid for nonexact, _, eid, _ in candidates if not nonexact], "entries": entries, "detail": detail}
 
 

@@ -20,6 +20,9 @@ def add_catalog_parser(commands: Any) -> None:
     parser = commands.add_parser("catalog", help="private PEAK source collection, drafts and independent search")
     parser.add_argument("--data-dir", help="outside every Git checkout; or SSR_KNOWLEDGE_DATA_DIR")
     actions = parser.add_subparsers(dest="action", required=True)
+    game_plan = actions.add_parser('register-game-plan', help='save immutable game analysis, fields, targets and relation definitions; no entries or network')
+    game_plan.add_argument('--file', required=True)
+    actions.add_parser('game-plan-status', help='read planned targets and actual current knowledge coverage from the specified DB')
     plan = actions.add_parser('export-source-plan', help='read-only export of central sources; no knowledge entries or new permissions')
     plan.add_argument('--source-id', action='append')
     local = actions.add_parser('register-file-source', help='register explicit local-file policy centrally; never enables website crawling')
@@ -118,8 +121,14 @@ def run_catalog(args: argparse.Namespace) -> tuple[Any, int]:
         return {"state": "stopped"}, 0
     if args.action in {'export-source-plan','register-file-source','ingest-collection'} and not args.data_dir:
         raise ValueError('collection handoff requires an explicit --data-dir')
-    read_only = args.action == 'export-source-plan' or args.action == 'ingest-collection' and not args.apply
+    read_only = args.action in {'export-source-plan','game-plan-status','entry','relations','search','stats','sources','snapshot','events','snapshot-diff'} or args.action == 'ingest-collection' and not args.apply
     with Catalog(args.data_dir, read_only=read_only) as store:
+        if args.action == 'register-game-plan':
+            from .game_plan import register_plan
+            return register_plan(store, read_json(args.file)), 0
+        if args.action == 'game-plan-status':
+            from .game_plan import coverage
+            return {'database': str(store.root / 'knowledge.sqlite3'), 'plans': coverage(store)}, 0
         if args.action == 'export-source-plan':
             return export_source_plan(store, args.source_id), 0
         if args.action == 'register-file-source':
