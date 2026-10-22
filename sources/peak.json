@@ -1,0 +1,382 @@
+{
+  "manifest_version": 1,
+  "game": "PEAK:3527290",
+  "sources": [
+    {
+      "source_id": "landfall-peak",
+      "url": "https://landfall.se/peak",
+      "source_type": "official",
+      "title": "PEAK — Landfall",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "main"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://landfall.se/peak-fan-policy",
+        "notes": "Paused after 2026-10-19 policy review: PEAK Fan Creation Policy explicitly restricts AI-generated texts/products and AI training using PEAK IP. Whether factual-reference AI editing falls within scope is unresolved; do not collect additional text or create new official summaries until clarified. Existing pending snapshots/revisions remain preserved. Privacy policy is not reuse permission.",
+        "uses": {
+          "local_cache": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "Policy restricts AI-generated texts/products, but does not expressly define AI input for factual reference; scope unresolved. Unknown is neither permission nor prohibition for all inputs."
+          },
+          "ai_train": {
+            "status": "prohibited",
+            "basis": "PEAK Fan Creation Policy explicitly says not to use PEAK IP to train AI systems/models."
+          }
+        }
+      },
+      "original_url": "https://landfall.se/peak"
+    },
+    {
+      "source_id": "wikipedia-peak",
+      "url": "https://en.wikipedia.org/wiki/Peak_(video_game)",
+      "source_type": "wiki",
+      "title": "Peak (video game) — Wikipedia",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "div",
+        "attribute": "id",
+        "value": "mw-content-text"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": true,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use",
+        "notes": "Reviewed Wikimedia Terms of Use section 7 and CC BY-SA 4.0 on 2026-10-19. Text-only limited collection; preserve contributors/page attribution, license and adaptation notice. No images, fair-use excerpts or public raw cache. AI-assisted factual editing is an operator assessment under the adaptation license, not a claim that Wikimedia approved this tool.",
+        "uses": {
+          "local_cache": {
+            "status": "allowed",
+            "basis": "CC BY-SA 4.0 permits copying/adaptation for any purpose subject to attribution/share-alike. This batch keeps linked attribution, license and change notices; text only, no third-party quoted material. Terms section 7 reviewed. Operator assessment, not a legal guarantee."
+          },
+          "search_index": {
+            "status": "allowed",
+            "basis": "CC BY-SA 4.0 permits copying/adaptation for any purpose subject to attribution/share-alike. This batch keeps linked attribution, license and change notices; text only, no third-party quoted material. Terms section 7 reviewed. Operator assessment, not a legal guarantee."
+          },
+          "ai_input": {
+            "status": "allowed",
+            "basis": "CC BY-SA 4.0 permits copying/adaptation for any purpose subject to attribution/share-alike. This batch keeps linked attribution, license and change notices; text only, no third-party quoted material. Terms section 7 reviewed. Operator assessment, not a legal guarantee."
+          },
+          "ai_train": {
+            "status": "unknown",
+            "basis": "No training use assessed or implemented; article reuse license alone is not recorded as a training-specific approval."
+          }
+        }
+      },
+      "original_url": "https://en.wikipedia.org/wiki/Peak_(video_game)"
+    },
+    {
+      "source_id": "peak-wikigg-items",
+      "url": "https://peak.wiki.gg/wiki/Items",
+      "source_type": "wiki",
+      "title": "Items — PEAK Wiki",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "div",
+        "attribute": "id",
+        "value": "mw-content-text"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://peak.wiki.gg/robots.txt",
+        "notes": "Pending terms confirmation and separately observed access restrictions. Saved robots permit the actual SSRKnowledge UA path under wildcard; search=yes, ai-train=no, use=reference, with no ai-input signal. use=reference is nonstandard/unknown, not a blanket ban. GPTBot is a different group. No target request after this correction; do not change UA/proxy/endpoints to bypass prior 403.",
+        "uses": {
+          "local_cache": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "Saved robots search=yes is a usage signal, not independent terms/license permission for a local body cache. Source terms still unresolved."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "ai-input absent and use=reference nonstandard: unknown. Terms page could not be accessed; no permission inferred."
+          },
+          "ai_train": {
+            "status": "prohibited",
+            "basis": "Saved wildcard content signal explicitly says ai-train=no; no training workflow exists."
+          }
+        }
+      },
+      "original_url": "https://peak.wiki.gg/wiki/Items"
+    },
+    {
+      "source_id": "steam-peak",
+      "url": "https://store.steampowered.com/app/3527290/PEAK/",
+      "source_type": "official",
+      "title": "PEAK on Steam",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "div",
+        "attribute": "id",
+        "value": "game_area_description"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://store.steampowered.com/subscriber_agreement/",
+        "notes": "Disabled: Steam Subscriber Agreement section 4.C restricts automation; no programmatic content collection. App ID 3527290 is only identity metadata.",
+        "uses": {
+          "local_cache": {
+            "status": "prohibited",
+            "basis": "Disabled: Steam Subscriber Agreement section 4.C restricts automation; no programmatic content collection. App ID 3527290 is only identity metadata."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "No authorized automated acquisition/index established; original collection restriction remains."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "ai_train": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          }
+        }
+      },
+      "original_url": "https://store.steampowered.com/app/3527290/PEAK/"
+    },
+    {
+      "source_id": "steam-player-guide",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3514106064",
+      "source_type": "third_party_analysis",
+      "title": "PEAK - Full Basic Guide (Ferni)",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "body"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://store.steampowered.com/subscriber_agreement/",
+        "notes": "Disabled: Steam automation restriction; community page also displays removal/incompatibility notices. Do not cache, translate or treat as verified gameplay evidence.",
+        "uses": {
+          "local_cache": {
+            "status": "prohibited",
+            "basis": "Disabled: Steam automation restriction; community page also displays removal/incompatibility notices. Do not cache, translate or treat as verified gameplay evidence."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "No authorized automated acquisition/index established; original collection restriction remains."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "ai_train": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          }
+        }
+      },
+      "original_url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3514106064"
+    },
+    {
+      "source_id": "blast-items",
+      "url": "https://blast.tv/gaming/news/all-items-in-peak-explained",
+      "source_type": "third_party_analysis",
+      "title": "All items in PEAK, explained — BLAST.tv",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "article"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://blast.tv/privacy-policy",
+        "notes": "Disabled: terms section 3 prohibits copying/exploiting site content. robots permission alone does not establish cache permission.",
+        "uses": {
+          "local_cache": {
+            "status": "prohibited",
+            "basis": "Disabled: terms section 3 prohibits copying/exploiting site content. robots permission alone does not establish cache permission."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "No authorized automated acquisition/index established; original collection restriction remains."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "ai_train": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          }
+        }
+      },
+      "original_url": "https://blast.tv/gaming/news/all-items-in-peak-explained"
+    },
+    {
+      "source_id": "g2a-guide",
+      "url": "https://www.g2a.com/news/features/10-essential-beginner-tips-to-survive-your-first-climb-in-peak/",
+      "source_type": "third_party_analysis",
+      "title": "10 Essential Beginner Tips — G2A News",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "article"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://www.g2a.com/terms-and-conditions",
+        "notes": "Disabled: section 11.1.3 prohibits systematic retrieval to create a database/catalog without written permission; local preflight also timed out. No guide content cached.",
+        "uses": {
+          "local_cache": {
+            "status": "prohibited",
+            "basis": "Disabled: section 11.1.3 prohibits systematic retrieval to create a database/catalog without written permission; local preflight also timed out. No guide content cached."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "No authorized automated acquisition/index established; original collection restriction remains."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "ai_train": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          }
+        }
+      },
+      "original_url": "https://www.g2a.com/news/features/10-essential-beginner-tips-to-survive-your-first-climb-in-peak/"
+    },
+    {
+      "source_id": "polygon-guide",
+      "url": "https://www.polygon.com/guides/608514/peak-game-tips-tricks-beginners-before-you-start",
+      "source_type": "third_party_analysis",
+      "title": "9 Peak beginner tips — Polygon",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "article"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://www.valnetinc.com/en/terms-of-use",
+        "notes": "Disabled: robots explicitly prohibits automated scraping and AI databases without written permission. No collection attempted.",
+        "uses": {
+          "local_cache": {
+            "status": "prohibited",
+            "basis": "Disabled: robots explicitly prohibits automated scraping and AI databases without written permission. No collection attempted."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "No authorized automated acquisition/index established; original collection restriction remains."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "ai_train": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          }
+        }
+      },
+      "original_url": "https://www.polygon.com/guides/608514/peak-game-tips-tricks-beginners-before-you-start"
+    },
+    {
+      "source_id": "landfall-peak-faq",
+      "url": "https://landfall.se/faq",
+      "source_type": "official",
+      "title": "Landfall FAQ — PEAK section (inventory only)",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "main"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://landfall.se/peak-fan-policy",
+        "notes": "Paused after 2026-10-19 policy review: PEAK Fan Creation Policy explicitly restricts AI-generated texts/products and AI training using PEAK IP. Whether factual-reference AI editing falls within scope is unresolved; do not collect additional text or create new official summaries until clarified. Existing pending snapshots/revisions remain preserved. Privacy policy is not reuse permission. URL discovered and web-read for coverage; collector has not acquired this page. Selector must be checked before any future authorized acquisition (FAQ contains other games).",
+        "uses": {
+          "local_cache": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "Policy restricts AI-generated texts/products, but does not expressly define AI input for factual reference; scope unresolved. Unknown is neither permission nor prohibition for all inputs."
+          },
+          "ai_train": {
+            "status": "prohibited",
+            "basis": "PEAK Fan Creation Policy explicitly says not to use PEAK IP to train AI systems/models."
+          }
+        }
+      },
+      "original_url": "https://landfall.se/faq"
+    },
+    {
+      "source_id": "landfall-peak-press",
+      "url": "https://landfall.se/peak-press-kit",
+      "source_type": "official",
+      "title": "PEAK Press Kit — Landfall (inventory only)",
+      "language": "en",
+      "declared_version": "page snapshot; game build unknown",
+      "selector": {
+        "tag": "main"
+      },
+      "interval_seconds": 3,
+      "policy": {
+        "allow_fetch": false,
+        "reviewed_at": "2026-10-19T00:00:00+00:00",
+        "terms_url": "https://landfall.se/peak-fan-policy",
+        "notes": "Paused after 2026-10-19 policy review: PEAK Fan Creation Policy explicitly restricts AI-generated texts/products and AI training using PEAK IP. Whether factual-reference AI editing falls within scope is unresolved; do not collect additional text or create new official summaries until clarified. Existing pending snapshots/revisions remain preserved. Privacy policy is not reuse permission. URL discovered and web-read for coverage; collector has not acquired this page. Selector must be checked before any future authorized acquisition (FAQ contains other games).",
+        "uses": {
+          "local_cache": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "search_index": {
+            "status": "unknown",
+            "basis": "This purpose has not been established by reviewed terms."
+          },
+          "ai_input": {
+            "status": "unknown",
+            "basis": "Policy restricts AI-generated texts/products, but does not expressly define AI input for factual reference; scope unresolved. Unknown is neither permission nor prohibition for all inputs."
+          },
+          "ai_train": {
+            "status": "prohibited",
+            "basis": "PEAK Fan Creation Policy explicitly says not to use PEAK IP to train AI systems/models."
+          }
+        }
+      },
+      "original_url": "https://landfall.se/peak-press-kit"
+    }
+  ]
+}

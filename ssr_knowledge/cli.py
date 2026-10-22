@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .contracts import read_json, validate
+from .contracts import ContractError, read_json, validate
+from .catalog_cli import add_catalog_parser, run_catalog
 from .store import LocalKnowledgeStore
 from .workflows import prepare_gap_research, prepare_gap_supplement, prepare_prebuild, query_published, review_candidate
 
@@ -20,6 +21,7 @@ def _print(value: Any) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ssr-knowledge")
     commands = parser.add_subparsers(dest="command", required=True)
+    add_catalog_parser(commands)
 
     prebuild = commands.add_parser("prebuild", help="prepare a reviewed candidate from a local source bundle")
     prebuild.add_argument("--source", required=True)
@@ -63,6 +65,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    if args.command == "catalog":
+        try:
+            result, code = run_catalog(args)
+        except (ContractError, ValueError, OSError) as exc:
+            _print({"status": "error", "error": str(exc)})
+            raise SystemExit(1) from exc
+        _print(result)
+        raise SystemExit(code)
     store = LocalKnowledgeStore(getattr(args, "state_dir", ".local-state"))
     if args.command == "prebuild":
         result = prepare_prebuild(read_json(args.source), store)

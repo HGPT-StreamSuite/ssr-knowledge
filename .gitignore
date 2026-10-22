@@ -4,3 +4,11 @@ __pycache__/
 .uv-cache/
 .local-state*/
 .test-temp/
+
+# Private catalog artifacts must never be committed
+*.sqlite3
+*.sqlite3-*
+*.sqlite
+*.db
+/private-data*/
+/raw-cache*/
