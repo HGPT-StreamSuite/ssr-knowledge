@@ -1,5 +1,7 @@
 # PEAK 全徽章攻略與道具續批驗收
 
+2026-10-22 續查已追加 3 個修訂，目前為 244 條目／264 修訂；秒數缺口仍保留。最新全庫核對與畫面驗收見 [昏迷計時與完整性驗收](peak-timer-integrity-acceptance.md)。以下保留 2026-10-21 本批結果。
+
 2026-10-21，依 [徽章與補給規劃](https://github.com/HGPT-StreamSuite/ssr-collector-peak/blob/codex/collector-acceptance/docs/peak-completion-plan.md)，把本批資料追加到既有 `work/peak-real-data/knowledge.sqlite3`。查詢入口沿用 `http://127.0.0.1:8767/`，沒有替換 DB 或重啟服務。
 
 ## 實際保存結果
