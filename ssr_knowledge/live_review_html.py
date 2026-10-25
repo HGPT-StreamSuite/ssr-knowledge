@@ -110,7 +110,10 @@ def detail_html(entry: dict[str, Any], options: dict[str, Any]) -> str:
             content += '</details>'
         content += '</section>'
     if entry["guide_gaps"]:
-        content += '<section><h3>攻略尚缺資料</h3><ul>' + ''.join('<li>' + esc(g["label"] + '：' + g["reason"]) + '</li>' for g in entry["guide_gaps"]) + '</ul></section>'
+        content += '<section><h3>攻略摘錄的缺口（原紀錄）</h3>'
+        if entry.get('knowledge_fields'):
+            content += '<p>保留攻略摘錄當時列出的缺口；補充資料請一併參考上方分類欄位及其來源證據。</p>'
+        content += '<ul>' + ''.join('<li>' + esc(g["label"] + '：' + g["reason"]) + '</li>' for g in entry["guide_gaps"]) + '</ul></section>'
     for extract in entry["research_extracts"]:
         content += '<section><h3>英文擷取內容</h3>'
         content += '<ul>' + ''.join('<li>' + esc(b["label"] + '：' + b["text_en"]) + '</li>' for b in extract["blocks"]) + '</ul>'

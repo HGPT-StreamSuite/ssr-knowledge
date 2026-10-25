@@ -121,16 +121,17 @@ def project_entry(store: Catalog, record: dict[str, Any], *, detailed: bool = Fa
             target = store.entry(eid)["entry"]
             other = related.setdefault(eid, {"entry_id": eid, "name_zh": link["related_names"].get("zh-TW", {}).get("text", target["name_zh"]),
                                              "name_en": link["related_names"].get("en", {}).get("text", ""), "evidence": [], "evidence_details": []})
+            origin = store.entry(link["source_entry_id"], link["revision_id"])
             label = "Items 備註提示" if link["kind"] == "badge_hint" else "官方條件提及"
             if link['kind'].startswith('planned:'):
                 from .game_plan import get_plan
-                origin_payload = store.entry(link['source_entry_id'], link['revision_id'])['entry']
+                origin_payload = origin['entry']
                 origin_plan = get_plan(store, origin_payload['knowledge_details']['plan_id'])
                 definition = next(r for r in origin_plan['relation_types'] if r['id'] == link['kind'].removeprefix('planned:'))
-                label = ('本條目 → ' if link['direction'] == 'outgoing' else '本條目 ← ') + definition['label'] + '（待審證據）'
+                evidence_status = '來源已更新' if origin['stale'] else REVIEW_LABELS[origin['status']].removeprefix('內容：')
+                label = ('本條目 → ' if link['direction'] == 'outgoing' else '本條目 ← ') + definition['label'] + '（證據條目：' + evidence_status + '）'
             if label not in other["evidence"]:
                 other["evidence"].append(label)
-            origin = store.entry(link["source_entry_id"], link["revision_id"])
             index = link["citation_index"]
             note = link["note_index"]
             translation = origin["entry"].get("organization", {}).get("notes_zh", [])
