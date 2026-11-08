@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="description" content="ssr-knowledge 獨立本機契約檢視與合成資料驗證，不連線服務或資料庫。">
+  <title>ssr-knowledge · 本機驗收工作台</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="data.js"></script>
+  <script defer src="contract.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#workspace">跳至輸入與驗證</a>
+  <header class="topbar">
+    <a class="brand" href="#top"><span class="mark" aria-hidden="true">K</span><span>ssr-knowledge<small>獨立本機驗收</small></span></a>
+    <nav aria-label="頁內導覽"><a href="#browser-gate">共通門檻</a><a href="#workspace">輸入與驗證</a><a href="#evidence">結果與阻塞</a></nav>
+    <span class="local"><span aria-hidden="true">●</span> 本機靜態・未連線服務</span>
+  </header>
+  <main id="top">
+    <section class="hero" aria-labelledby="headline">
+      <div><p class="eyebrow">KNOWLEDGE / CONTRACT WORKBENCH</p><h1 id="headline">先核對格式，<br>再進入知識流程。</h1><p class="intro">在這裡檢視契約、輸入合成 JSON，取得可追溯的結構驗證結果。每一次「通過」，都只對應明確的檢查範圍。</p><div class="version"><span>工作基準</span><code id="version">載入中</code><span>＋未提交的本機頁面</span></div></div>
+      <aside class="scope-card" aria-label="本頁操作範圍"><p class="eyebrow">THIS PAGE CAN</p><div><span class="dot good"></span><p><strong>檢查 JSON 契約</strong><small>8 份本 repo schema 的支援子集</small></p></div><div><span class="dot neutral"></span><p><strong>檢視標準與證據摘要</strong><small>合成範例、歷史基線及未完成事項</small></p></div><div><span class="dot warning"></span><p><strong>資料庫流程未接通</strong><small>不執行擷取、入庫、批准或發布</small></p></div></aside>
+    </section>
+    <section class="browser-gate" id="browser-gate" aria-labelledby="browser-gate-title">
+      <div class="section-title"><div><p class="eyebrow">COMMON GATE / ALL REPOSITORIES</p><h2 id="browser-gate-title">預設瀏覽器可開啟並正常操作</h2></div><span class="tag fail">本輪網頁驗收：BLOCKED／未通過</span></div>
+      <p>所有 repo 都必須在使用者的預設瀏覽器實際看見頁面，操作適用的輸入、實際輸出與錯誤／恢復流程，並保留同版操作證據。程式存在、HTTP 成功或模擬 DOM 測試不能替代。</p>
+      <ol><li><strong>預設瀏覽器身分未知：</strong>唯讀查詢關聯遭 Registry 存取拒絕，未重試。</li><li><strong>實際開啟受阻：</strong>先前 Chrome 的 file:// 開啟遭工具 URL 政策拒絕；這也不是預設瀏覽器已確認的證據。</li><li><strong>實際操作未驗證：</strong>下方全部功能測例仍缺預設瀏覽器的正向輸入、錯誤、重送與取消／返回證據。</li></ol>
+      <p class="small-note">本輪未重試開啟、未換瀏覽器／工具／埠，也未改預設應用或權限。<a href="../../../docs/independent-acceptance.md">查閱 G01–G05 共通門檻與本 repo 測例</a>。</p>
+    </section>
+    <section class="work-section" id="workspace" aria-labelledby="workspace-title">
+      <div class="section-title"><div><p class="eyebrow">01 / INPUT → VALIDATION → OUTPUT</p><h2 id="workspace-title">契約驗證</h2></div><span class="tag">瀏覽器內執行・資料僅留記憶體</span></div>
+      <noscript><p class="notice">JavaScript 未啟用。互動驗證不可用；下方標準與限制仍可閱讀。</p></noscript>
+      <div class="workspace">
+        <form class="panel input-panel" id="validation-form" autocomplete="off">
+          <div class="panel-heading"><h3><span class="step">1</span> 輸入</h3><span class="subtle">只使用合成或範例資料</span></div>
+          <label for="schema-select">選擇契約</label><select id="schema-select" disabled><option>載入契約中</option></select>
+          <p id="schema-description" class="field-help"></p>
+          <div class="sample-actions"><button type="button" id="sample" disabled>載入合成範例</button><button type="button" id="invalid-sample" disabled>載入缺欄範例</button><button type="button" id="show-schema" disabled aria-expanded="false" aria-controls="schema-box">檢視契約</button></div>
+          <pre id="schema-box" class="schema-box" hidden></pre>
+          <div class="label-row"><label for="json-input">JSON 內容</label><span id="input-size" class="subtle">0 bytes</span></div>
+          <textarea id="json-input" placeholder="載入上方合成範例，或在此貼上 JSON。" spellcheck="false" autocomplete="off" aria-describedby="input-help" disabled></textarea>
+          <p class="field-help" id="input-help">不儲存、不傳送。上限 256,000 UTF-8 bytes；深度 64、節點 10,000。Ctrl+Enter 驗證；Escape 取消待執行。</p>
+          <div class="form-actions"><button class="primary" id="validate" type="submit" disabled>執行結構驗證 <span aria-hidden="true">↗</span></button><button id="cancel" type="button" disabled>取消待執行</button><button class="text-button" id="clear" type="button" disabled>清除輸入</button></div>
+        </form>
+        <section class="panel output-panel" aria-labelledby="output-title">
+          <div class="panel-heading"><h3 id="output-title"><span class="step">2</span> 實際輸出</h3><span class="tag" id="result-tag">尚未執行</span></div>
+          <div id="result-announcement" role="status" aria-live="polite" aria-atomic="true"><h4 id="result-title">等待你的輸入</h4><p id="result-description">選擇契約並載入範例，再執行一次結構驗證。這裡不會預先顯示成功結果。</p></div>
+          <ul id="error-list" class="error-list" hidden></ul>
+          <pre id="result-json" class="result-json" tabindex="0" aria-label="驗證結果 JSON" hidden></pre>
+          <div class="result-empty" id="result-empty" aria-hidden="true"><span>{ }</span><small>你的結果會出現在這裡</small></div>
+          <button type="button" id="back-to-input" class="text-button" disabled>← 返回編輯</button>
+          <p class="boundary"><strong>結構通過 ≠ 網頁驗收通過，也不代表知識已發布</strong><br>本頁不呼叫 Python、CLI 或 SQLite，也不驗證來源授權、引文真實性、雜湊或人工審核。</p>
+        </section>
+      </div>
+    </section>
+    <section class="standards" id="native-handler" aria-labelledby="native-handler-title">
+      <div class="section-title"><div><p class="eyebrow">NATIVE HANDLER / CLI AVAILABLE · WEB TRANSPORT NOT CONNECTED</p><h2 id="native-handler-title">原生功能入口</h2></div><span class="tag fail">頁面 → native handler 未接通</span></div>
+      <p class="small-note">固定 CLI <code>python -B -m ssr_knowledge acceptance-native</code> 可從 stdin 接受有界合成 JSON，真正呼叫本 repo 的 Python 契約、待審工作流與隔離 Catalog。此頁尚無連到它的傳輸層；上方按鈕只執行瀏覽器結構驗證，不能當作原生入庫／查詢已接通。</p>
+      <p class="small-note">以下只顯示請求格式，不是執行結果。可操作項目及 CLI 測試證據見說明；不接受任意指令、Python 路徑、DB／檔案、外部端點或 ACL。沒有服務，也不會嘗試已受拒的 localhost 連線。</p>
+      <pre class="schema-box" id="native-request" tabindex="0">{"format":"ssr.knowledge.acceptance.request.v1","operation":"catalog_check","input":{"scenario":"pending","query":"月繩"}}</pre>
+      <p class="small-note">已取得真正原生CLI的版本綁定收據，保留原始輸入、輸出與runtime指紋；當前測試數與限制見原生說明。這些不是瀏覽器操作結果，頁面→handler仍未接通，網頁驗收仍為BLOCKED。</p>
+      <a href="../../../fixtures/acceptance-native.synthetic.json">檢視固定合成請求</a> · <a href="../../../docs/acceptance-native.md">原生操作、實測結果與限制</a> · <a href="../../../interfaces/manifest.json">機器接口清單</a> · <a href="../../../docs/interface-audit.md">對接差異與模組邊界</a>
+    </section>
+    <section class="standards" id="criteria" aria-labelledby="criteria-title">
+      <div class="section-title"><div><p class="eyebrow">02 / REPOSITORY FUNCTION CASES</p><h2 id="criteria-title">本 repo 的功能測例</h2></div><a href="../../../docs/independent-acceptance.md">開啟完整驗收標準 ↗</a></div>
+      <p class="small-note">這些是待實際操作的標準。W01–W12 的預設瀏覽器操作全部未驗證；程式結果不計為瀏覽器通過。</p>
+      <div class="criteria-grid"><article><span class="criterion-number">A</span><h3>頁面契約檢查</h3><p>正確範例須回傳 schema_valid。缺欄、型別與 enum 錯誤須列出 JSON 路徑；輸入錯誤不能沿用舊成功結果。</p><p class="small-note">支援 type、enum、required、properties、additionalProperties、items；非完整 JSON Schema。</p></article><article><span class="criterion-number">B</span><h3>操作與資料隔離</h3><p>重複提交可重現；取消待執行不產生結果。編輯後舊結果失效。HTML 只作文字，資料不送出、不持久化。</p><p class="small-note">嚴格 JSON；拒絕非有限數字及不安全整數。Python parser 的數字界線可能不同。</p></article><article><span class="criterion-number">C</span><h3>原有知識流程</h3><p>原文保存後，還須寫入待審修訂，以新程序讀回，再核對同一 DB 的 API 與實際頁面；每一步都要有證據。</p><p class="small-note">此頁未提供上述 DB 操作。pending、批准與發布仍是分開的狀態。</p></article></div>
+    </section>
+    <section class="evidence-section" id="evidence" aria-labelledby="evidence-title">
+      <div class="section-title"><div><p class="eyebrow">03 / VERIFIED PROGRAM RESULTS</p><h2 id="evidence-title">已驗證結果：限程式與檔案</h2></div><a href="../../../docs/acceptance-web.md">開啟頁面說明與驗證紀錄 ↗</a></div>
+      <p class="small-note">本頁程式證據：17 個不同 JavaScript 案例、4 項 Python 檢查通過；包含記憶體事件模型及契約一致性，沒有真實預設瀏覽器操作證據。下方為更早的原生工作流基線。</p>
+      <div class="evidence-grid"><article class="evidence-card"><span class="tag">2026-11-05 歷史獨立測試基線</span><h3>140 個既有案例</h3><dl class="counts"><div><dt>斷言通過</dt><dd>122</dd></div><div><dt>HTTP 權限阻擋</dt><dd>10</dd></div><div><dt>選配略過</dt><dd>8</dd></div></dl><p>這是已整理的歷史證據，不是剛由本頁執行的測試。122 包含沿用的 8 項斷言，其原包裝另有 exit 1 限制；完整套件未通過。</p><p class="small-note">本頁不讀私人測試日誌。新頁面的程式與 UI 驗證請讀上方紀錄，未實測的部分仍標示未驗證。</p></article><article class="evidence-card limited"><span class="tag">保留原有阻塞</span><h3>服務與瀏覽器端到端未驗證</h3><p>既有 localhost HTTP 連線曾遭 WinError 10013。本工具不重試連線、不換埠，也不啟動服務。</p><ul><li>未操作正式 DB、真實知識或外部來源</li><li>未驗證 live 服務、跨 repo 整合或內容真偽</li><li>缺少 UnityPy 的 8 項測試保持略過</li></ul></article></div>
+      <details class="source-details"><summary>檢視契約來源與版本指紋</summary><p>此頁從 repo 的契約與合成 fixtures 產生資料包，不含私人記錄。以下 hash 僅辨識檔案版本，不代表來源事實已核實。</p><pre id="source-fingerprint" tabindex="0">資料包未載入</pre></details>
+    </section>
+    <section class="standards" id="not-applicable" aria-labelledby="not-applicable-title">
+      <div class="section-title"><div><p class="eyebrow">04 / NOT APPLICABLE · NOT A PASS</p><h2 id="not-applicable-title">不適用項目與理由</h2></div></div>
+      <ul class="scope-list"><li><strong>HTTP health endpoint／常駐服務啟停：</strong>此入口是沒有後端的靜態檔案，不提供這些機制；預設瀏覽器門檻仍適用。</li><li><strong>取消已開始的串流工作：</strong>沒有串流工作，僅提供取消尚未開始的排程。</li><li><strong>integer/number 欄位相容性：</strong>目前 8 契約沒有此欄位；新增時必須另驗。</li></ul>
+      <p class="small-note">catalog 入庫、批准／發布、真實 DB 查詢是本 repo 的原有職責，但此頁未接通；它們不能標為不適用或已通過。</p>
+    </section>
+    <section class="standards" id="blocked" aria-labelledby="blocked-title">
+      <div class="section-title"><div><p class="eyebrow">05 / UNTESTED & BLOCKED</p><h2 id="blocked-title">未測／阻塞</h2></div><span class="tag fail">共通門檻未達成</span></div>
+      <p class="small-note">預設瀏覽器身分查詢遭拒、file:// 開啟遭政策拒絕；實際畫面、正向／錯誤輸入輸出、重複提交、取消／返回、桌面及窄視窗都未在預設瀏覽器驗證。既有 localhost WinError 10013、CIM 與舊 checkout 拒絕保持原狀，不以其他方法繞過。</p>
+      <p class="small-note">目前只有本機 HTML 檔案及未驗證的預期開啟方式；沒有已驗證可用的網址，也沒有新的瀏覽器操作截圖。</p>
+    </section>
+  </main>
+  <footer><span>ssr-knowledge / 本機契約檢視</span><span>關閉分頁即停止；重新整理會清空自訂輸入。</span><a href="#workspace">回到輸入 ↑</a></footer>
+</body>
+</html>

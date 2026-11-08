@@ -1,0 +1,182 @@
+{
+  "format": "ssr.knowledge.interfaces.v1",
+  "producer": "ssr-knowledge/0.1.0",
+  "responsibility": "Independent offline preparation and PEAK catalog; no chat/LLM, no identity inference, no complete shared-Record export",
+  "cli_commands": [
+    "acceptance-native",
+    "catalog",
+    "prebuild",
+    "publish",
+    "query",
+    "research",
+    "review",
+    "supplement",
+    "tools"
+  ],
+  "catalog_actions": [
+    "badge-drafts",
+    "collect",
+    "discover-details",
+    "entry",
+    "events",
+    "export-source-plan",
+    "extract-game-names",
+    "game-plan-status",
+    "import-drafts",
+    "import-game-text",
+    "import-name-reference",
+    "import-text-source",
+    "import-web-excerpt",
+    "ingest-collection",
+    "match-community-names",
+    "pair-game-names",
+    "parse-peak-items",
+    "publish-entry",
+    "register-file-source",
+    "register-game-plan",
+    "register-sources",
+    "relations",
+    "render-review",
+    "research-batch",
+    "review-entry",
+    "search",
+    "serve-review",
+    "snapshot",
+    "snapshot-diff",
+    "source-status",
+    "sources",
+    "stats"
+  ],
+  "native": {
+    "entry": [
+      "python",
+      "-B",
+      "-X",
+      "utf8",
+      "-m",
+      "ssr_knowledge",
+      "acceptance-native"
+    ],
+    "library": [
+      "ssr_knowledge.acceptance_native.handle_request",
+      "ssr_knowledge.acceptance_native.handle_json"
+    ],
+    "request_format": "ssr.knowledge.acceptance.request.v1",
+    "response_format": "ssr.knowledge.acceptance.response.v1",
+    "operations": [
+      "catalog_check",
+      "gap_supplement_preview",
+      "prebuild_preview",
+      "validate"
+    ],
+    "exit_codes": {
+      "0": "processed; inspect native data status",
+      "1": "rejected/native error",
+      "2": "argparse rejects unsupported CLI arguments; stderr, no response envelope"
+    },
+    "max_utf8_bytes": 65536,
+    "web_transport_connected": false
+  },
+  "legacy_outputs": {
+    "prebuild": "contracts/candidate.schema.json",
+    "research": "contracts/research-packet.schema.json",
+    "publish": "contracts/published-bundle.schema.json",
+    "errors": {
+      "exit_1": {
+        "status": "error",
+        "error": "diagnostic string"
+      },
+      "exit_2": "argparse usage on stderr; not a JSON envelope"
+    },
+    "catalog_search": [
+      "scope",
+      "query",
+      "status",
+      "matches",
+      "total_matches",
+      "truncated",
+      "name_resolution",
+      "names_only"
+    ],
+    "catalog_match": [
+      "revision_id",
+      "status",
+      "stale",
+      "entry",
+      "sources",
+      "payload_sha256",
+      "match_type"
+    ]
+  },
+  "upstream": {
+    "provider": "ssr-collector-peak",
+    "protocols": [
+      "ssr.source-plan.v1",
+      "ssr.collection.v1",
+      "ssr.game-plan.v1"
+    ],
+    "binding": "exact source_id/config_sha256/URL/raw/body hashes; no permission grant in bundle"
+  },
+  "downstream": {
+    "consumer": "ssr-chat/CatalogKnowledgeReader",
+    "entry": "catalog search --text=NAME --names-only --limit 2",
+    "required_permission": "snapshot_usage.ai_input and current_usage.ai_input both allowed; search_index alone insufficient",
+    "synthetic_receipt_ai_input": "unknown; not allowed for model input"
+  },
+  "shared_record_bridge": {
+    "connected": false,
+    "consumer": "hgpt-game-store / hgpt-ssr-game-search 1.0.1",
+    "missing_authoritative_fields": [
+      "schema_version",
+      "source_event_id",
+      "event_time",
+      "received_at",
+      "scope",
+      "actor_account_id",
+      "record_kind",
+      "quality_flags",
+      "source_refs",
+      "access_scope"
+    ],
+    "rule": "Do not rename Evidence/catalog entry into a full Record or infer source ACL/scope/version. Coordinator decision required."
+  },
+  "runtime_source_sha256": {
+    "ssr_knowledge/__init__.py": "19a9c7edd5c697abde09ec9de5ff8b720ff9bd5319744127e22ac3329204cda6",
+    "ssr_knowledge/__main__.py": "3129adff95e0f38b87ab34cddfc27082c7892bcaec267ff5d40f160fdf55b44a",
+    "ssr_knowledge/acceptance_native.py": "7a61e08c0ab937de7e4de996d1fbe10c2fa0463efe76c21cdb7e71302c4cb22f",
+    "ssr_knowledge/acquisition.py": "1e1812b356216fadd09f5426c524e5fd0f08b844ab6d8752fcaeea722fd04e7e",
+    "ssr_knowledge/capture_receipt.py": "5524e578b0b02ec2c2614c5eee53be79d11feb29edaa1cd1f46e34e2924d88e9",
+    "ssr_knowledge/catalog.py": "a95992717ec1ddc98e1888f209c94939c4bb9118050bd39106da6a1361656bc0",
+    "ssr_knowledge/catalog_cli.py": "6219838fdd7296686c9160c6274b750be7a233ae5087eb74c591ef44ec326c06",
+    "ssr_knowledge/cli.py": "982367ea212b9350aa5e81d2c41d158ec5c336bfdccab6ef18435ef2480207e7",
+    "ssr_knowledge/collection_handoff.py": "fdf155b0344ddd2b9a4c4b8f1fc6806f6c665326e88926ba075a76345195cdeb",
+    "ssr_knowledge/community_names.py": "d11b22b9cbe5085a98e018bba0987ebf1e1629cdce320ba1f7415f9bba05f69d",
+    "ssr_knowledge/contracts.py": "958c804e9135dfd9f40ca8c5b5812f0a1ad2fe947cd6dad16072b5264781d3f4",
+    "ssr_knowledge/game_extraction.py": "66f422616c0a824eb5569ff1cd1913f6726e1f43fd6c3350487976a8002be990",
+    "ssr_knowledge/game_localization.py": "65834514d99903241c8b72da78171b960791ed007a8b5f11081dba30f60b5f5a",
+    "ssr_knowledge/game_plan.py": "4cc5a7aa2c1561fbf0c6118606ef5e29b348488c2a6ce8ba7ffbb917911fb6fb",
+    "ssr_knowledge/guide_details.py": "54fe0c9118a5180a14a7c7b1e02bfa4c2ab186301ce93cadb62a6d0d330bc7b4",
+    "ssr_knowledge/item_table.py": "ab3a8d00b384b389004ef566b8a2c5a224f2d23cc0780c6ddd721c510bfe228a",
+    "ssr_knowledge/live_review.py": "9159ce1fc3c6525f90a335b2e7ff6edbf8d6889f7f649baf20c689e97a50c2d7",
+    "ssr_knowledge/live_review_html.py": "a1d9deb5f23a582c8f0d884c84fe63a6d4550d8a9e467457319eeca041589bb0",
+    "ssr_knowledge/name_reference.py": "af52614a10d19760d60b6358ab3e98b5b3033e0618ea789797ac4d67a09f716c",
+    "ssr_knowledge/names.py": "0976977fbb69afb94c86e4de3f7848f0a1b1982e4dae3dc3aa1eb3c832a8cbe4",
+    "ssr_knowledge/organization.py": "82b564cc1dc0e9c0c8ed92aa3b53ed9fd9ac8c4b733f4f05cdf6b75ac85b2ae9",
+    "ssr_knowledge/research.py": "cb6c0a8c4968faab0ac15cb22adc3eb0fe5a534cca0b106a5462279980cac88e",
+    "ssr_knowledge/review_page.py": "20465dd32d85eb77232ea1e647058d23458763de82664365b515c78b4051202e",
+    "ssr_knowledge/store.py": "515988eb494c5d73bc3458685ee02130e95859f1f90dbe85bb89a9c962d3073e",
+    "ssr_knowledge/unity_stream.py": "03598ef65022a0490bd0de6dfd84b30851eb6443c45e1f44607ea58e1b71c46f",
+    "ssr_knowledge/upload_source.py": "ea3964c8f5989e8f9832ec63ae34bfebd8cf6d4e84d1109724d3e6b2ba5b1405",
+    "ssr_knowledge/web_excerpt.py": "0ea3b7d1ae5f5f2a7f6ae50e75bf80318f826756e3d9c7bd12cb319507f540d2",
+    "ssr_knowledge/workflows.py": "89bd87f9a88ee27a4bee53e8234f875b5c60417fff7625b285eec7ca66bfb4e2",
+    "contracts/candidate.schema.json": "8acfaa1967ba49eae5fa29c12259fcfd3e959c01f555229e1ed11c86d92adcd5",
+    "contracts/gap-export.schema.json": "eddc33cbaecb7573877749e0baada764f2849d57dc0649cd0ca0684a37856c87",
+    "contracts/prebuild-source.schema.json": "6afeaeae4c6413d54d326258a763e1a113d8c24f705a002b2597024ad4e22a7b",
+    "contracts/published-bundle.schema.json": "f00ac4d7863683a0f20fd663d5b032894ad256df9626b90d4a9bab47c04d1102",
+    "contracts/record.schema.json": "1593cf3b561605ee96eb79115a73c772648cfbd320d2919be0908f5e6e28e1d1",
+    "contracts/research-packet.schema.json": "4da7485405ea9afbe260844412ae8d896dec2bebeb81ddd87353273b0d939c68",
+    "contracts/supplement-records.schema.json": "d3a99f9b4e31d5d5137dbf95393769220c05f4f5c830578d2e4ca6b53140fb81",
+    "contracts/tool-config.schema.json": "7d8f76804b9e4f5dc96b8f2d1796464ba71cae8ff7774f13166628956ad90cb9",
+    "fixtures/collection-example-source.synthetic.json": "45ee3ec661761d2234dea1dcd508b955bc3fc8b148c99073d575599d6d86e1c8"
+  }
+}

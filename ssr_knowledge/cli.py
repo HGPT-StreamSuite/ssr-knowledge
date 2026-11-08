@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ssr-knowledge")
     commands = parser.add_subparsers(dest="command", required=True)
     add_catalog_parser(commands)
+    commands.add_parser("acceptance-native", help="fixed synthetic-only acceptance request on stdin; no paths/network/server")
 
     prebuild = commands.add_parser("prebuild", help="prepare a reviewed candidate from a local source bundle")
     prebuild.add_argument("--source", required=True)
@@ -65,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    if args.command == "acceptance-native":
+        from .acceptance_native import MAX_BYTES, handle_json
+        result = handle_json(sys.stdin.buffer.read(MAX_BYTES + 1))
+        _print(result)
+        raise SystemExit(0 if result["status"] == "ok" else 1)
     if args.command == "catalog":
         try:
             result, code = run_catalog(args)
@@ -73,6 +80,15 @@ def main() -> None:
             raise SystemExit(1) from exc
         _print(result)
         raise SystemExit(code)
+    try:
+        result = _run_legacy(args)
+    except (ContractError, ValueError, OSError) as exc:
+        _print({"status": "error", "error": str(exc)})
+        raise SystemExit(1) from exc
+    _print(result)
+
+
+def _run_legacy(args: argparse.Namespace) -> Any:
     store = LocalKnowledgeStore(getattr(args, "state_dir", ".local-state"))
     if args.command == "prebuild":
         result = prepare_prebuild(read_json(args.source), store)
@@ -97,7 +113,7 @@ def main() -> None:
                 if args.save
                 else config
             )
-    _print(result)
+    return result
 
 
 if __name__ == "__main__":

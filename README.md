@@ -2,11 +2,15 @@
 
 獨立執行的本機知識準備工具，只使用此 repo 與 Python 標準函式庫。沒有跨 repo 匯入、共用套件、服務或模型依賴。
 
+## 可複用採集 Playbook
+
+他遊戲若要採用同一套「規劃 → 擷取檔案 → 保存待審 → 直接查 DB」方案，先讀 **[可複用遊戲知識採集 Playbook](docs/reusable-game-collection-playbook.md)**（含 Mermaid 架構／序列／取得決策／進度狀態與落地檢查清單）。契約細節仍以本頁下方規格為準。
+
 執行順序與責任以 [保存與查詢驗收規格](docs/persistence-and-query-acceptance.md) 為準：先依遊戲分析決定要存什麼，擷取程式交檔案，保存端整理並真正寫入待審修訂，再直接查同一 DB 驗收。文件 snapshot、查證紀錄與待辦不算知識保存完成。
 
 ## 即時 DB 驗收入口
 
-已實作 [遊戲建庫計畫與分類欄位](docs/game-plan-contract-v1.md)，保存端驗證不可變計畫、逐欄證據與關聯，查詢頁直接讀指定 DB。[最新本機保存與驗收](docs/peak-completion-acceptance.md)：**244 個待審條目、261 個修訂、984 個欄位、145 條目前關聯**，全部已由新 CLI、API 與 Chrome 頁面讀回核對。含 64 個逐項徽章、123 個道具、11 個區域及 19 篇攻略；本輪新增 135 條目、補充 4 條目，原 122 個修訂保留。9 個欄位缺口已補 8 個，剩昏迷倒數的基準秒數。查詢入口維持 `http://127.0.0.1:8767/`。
+已實作 [遊戲建庫計畫與分類欄位](docs/game-plan-contract-v1.md)，保存端驗證不可變計畫、逐欄證據與關聯，查詢頁直接讀指定 DB。PEAK 本機批次規模與缺口以實際 DB 及最新 acceptance 為準（例如 [peak-completion-acceptance.md](docs/peak-completion-acceptance.md)、[peak-timer-integrity-acceptance.md](docs/peak-timer-integrity-acceptance.md)、[peak-reception-expand-acceptance.md](docs/peak-reception-expand-acceptance.md)）；勿只信本段歷史摘要。規劃範圍含徽章、道具、區域與攻略等；查詢入口維持 `http://127.0.0.1:8767/`。
 
 使用 `catalog --data-dir PATH serve-review` 啟動 `http://127.0.0.1:8765/`。每次搜尋、翻頁與開條目都重新唯讀查詢實際 SQLite，顯示 DB 路徑及讀取時間；有中英文／別名搜尋、分類、來源與徽章關聯。資料庫失敗時直接報錯，不改用示範或上次資料。啟停、狀態與驗收步驟見 [即時唯讀驗收](docs/live-review.md)。舊 HTML 匯出僅保留作快照。
 
@@ -67,3 +71,13 @@ uv --cache-dir .uv-cache --offline run python -m ssr_knowledge query --version v
 ```
 
 `fixtures/` 與測試內的 Lunar Rope／月光繩均為合成資料，不能作為真實 PEAK 知識。真實 cache、DB、草稿與私人驗收紀錄不提交 Git。人工審核 attestation 是本機操作邊界，沒有登入或身分驗證機制；本工具不會自行替使用者核准真實知識。
+
+## 獨立本機驗收頁
+
+共通必過門檻是「使用者預設瀏覽器實際開啟並正常操作」。目前此門檻受阻，**網頁驗收為 BLOCKED／未通過**；程式、檔案或模擬 DOM 檢查通過不能替代。
+
+直接開啟 [本機驗收工作台](web/acceptance/dist/index.html)，可輸入合成 JSON、檢視 8 份契約與實際結構驗證結果。這是無服務的靜態頁面，資料僅在記憶體；不呼叫 Python、CLI 或 SQLite，不執行入庫、審核或發布。
+
+[獨立驗收標準](docs/independent-acceptance.md) 列明輸入、輸出、錯誤、隔離及證據要求；[開啟方式與驗證紀錄](docs/acceptance-web.md) 明列已測與未測範圍。既有 localhost HTTP 權限阻擋仍有效，不啟動服務或改埠重試。契約結構通過不代表知識工作流已完成。
+
+另有固定 [原生驗收 handler／CLI](docs/acceptance-native.md)：`python -B -m ssr_knowledge acceptance-native`，只從 stdin 接受固定操作的有界合成 JSON，實際呼叫本 repo 的 Store/Catalog，不接受路徑、指令、端點或 ACL。網頁到此 handler 的傳輸層尚未接通，不能把 CLI 結果當成預設瀏覽器驗收通過。

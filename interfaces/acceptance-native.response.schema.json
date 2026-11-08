@@ -1,0 +1,94 @@
+{
+  "type": "object",
+  "required": [
+    "format",
+    "synthetic_only",
+    "network_used",
+    "llm_used",
+    "production_data_used",
+    "status"
+  ],
+  "properties": {
+    "format": {
+      "type": "string",
+      "enum": [
+        "ssr.knowledge.acceptance.response.v1"
+      ]
+    },
+    "synthetic_only": {
+      "type": "boolean",
+      "enum": [
+        true
+      ]
+    },
+    "network_used": {
+      "type": "boolean",
+      "enum": [
+        false
+      ]
+    },
+    "llm_used": {
+      "type": "boolean",
+      "enum": [
+        false
+      ]
+    },
+    "production_data_used": {
+      "type": "boolean",
+      "enum": [
+        false
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "rejected",
+        "error"
+      ]
+    },
+    "operation": {
+      "type": "string",
+      "enum": [
+        "catalog_check",
+        "gap_supplement_preview",
+        "prebuild_preview",
+        "validate"
+      ]
+    },
+    "data": {
+      "type": "object"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "temporary_state_created": {
+      "type": "boolean"
+    },
+    "temporary_state_removed": {
+      "type": "boolean"
+    },
+    "before": {
+      "type": "object"
+    },
+    "after": {
+      "type": "object"
+    },
+    "error_type": {
+      "type": "string"
+    },
+    "errno": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ssr.knowledge.acceptance.response.v1",
+  "x-status-semantics": "ok means request executed; data may still be schema_invalid, no_data or rejected. No browser acceptance implied."
+}

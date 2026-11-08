@@ -1,0 +1,398 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ssr.knowledge.acceptance.request.v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "format",
+        "operation",
+        "input"
+      ],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "ssr.knowledge.acceptance.request.v1"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "catalog_check"
+          ]
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "scenario",
+            "query"
+          ],
+          "properties": {
+            "scenario": {
+              "type": "string",
+              "enum": [
+                "bad_citation",
+                "pending",
+                "policy_denied",
+                "published",
+                "source_changed"
+              ]
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "format",
+        "operation",
+        "input"
+      ],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "ssr.knowledge.acceptance.request.v1"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "gap_supplement_preview"
+          ]
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "gaps",
+            "records"
+          ],
+          "properties": {
+            "gaps": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "Question gap export",
+              "type": "object",
+              "required": [
+                "export_id",
+                "gaps"
+              ],
+              "properties": {
+                "export_id": {
+                  "type": "string"
+                },
+                "gaps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "gap_id",
+                      "run_id",
+                      "message_id",
+                      "purpose",
+                      "question",
+                      "reason"
+                    ],
+                    "properties": {
+                      "gap_id": {
+                        "type": "string"
+                      },
+                      "run_id": {
+                        "type": "string"
+                      },
+                      "message_id": {
+                        "type": "string"
+                      },
+                      "purpose": {
+                        "type": "string",
+                        "enum": [
+                          "person",
+                          "game_info",
+                          "game_guide",
+                          "game_item"
+                        ]
+                      },
+                      "question": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "records": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "Human researched supplementation records",
+              "type": "object",
+              "required": [
+                "records"
+              ],
+              "properties": {
+                "records": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "record_id",
+                      "kind",
+                      "topic",
+                      "summary",
+                      "tags",
+                      "gap_id",
+                      "source"
+                    ],
+                    "properties": {
+                      "record_id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "person",
+                          "game_info",
+                          "game_guide",
+                          "game_item"
+                        ]
+                      },
+                      "topic": {
+                        "type": "string"
+                      },
+                      "summary": {
+                        "type": "string"
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "gap_id": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "object",
+                        "required": [
+                          "source_id",
+                          "source_type",
+                          "title",
+                          "locator",
+                          "accessed_at"
+                        ],
+                        "properties": {
+                          "source_id": {
+                            "type": "string"
+                          },
+                          "source_type": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "locator": {
+                            "type": "string"
+                          },
+                          "accessed_at": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "format",
+        "operation",
+        "input"
+      ],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "ssr.knowledge.acceptance.request.v1"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "prebuild_preview"
+          ]
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "source"
+          ],
+          "properties": {
+            "source": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "title": "Prebuild source bundle",
+              "type": "object",
+              "required": [
+                "bundle_id",
+                "records"
+              ],
+              "properties": {
+                "bundle_id": {
+                  "type": "string"
+                },
+                "records": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "record_id",
+                      "kind",
+                      "topic",
+                      "summary",
+                      "tags",
+                      "source"
+                    ],
+                    "properties": {
+                      "record_id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "person",
+                          "game_info",
+                          "game_guide",
+                          "game_item"
+                        ]
+                      },
+                      "topic": {
+                        "type": "string"
+                      },
+                      "summary": {
+                        "type": "string"
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "source": {
+                        "type": "object",
+                        "required": [
+                          "source_id",
+                          "source_type",
+                          "title",
+                          "locator",
+                          "accessed_at"
+                        ],
+                        "properties": {
+                          "source_id": {
+                            "type": "string"
+                          },
+                          "source_type": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "locator": {
+                            "type": "string"
+                          },
+                          "accessed_at": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "format",
+        "operation",
+        "input"
+      ],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "ssr.knowledge.acceptance.request.v1"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "validate"
+          ]
+        },
+        "input": {
+          "type": "object",
+          "required": [
+            "schema",
+            "value"
+          ],
+          "properties": {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "candidate.schema.json",
+                "gap-export.schema.json",
+                "prebuild-source.schema.json",
+                "published-bundle.schema.json",
+                "record.schema.json",
+                "research-packet.schema.json",
+                "supplement-records.schema.json",
+                "tool-config.schema.json"
+              ]
+            },
+            "value": {}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "x-native-profile": {
+    "max_utf8_bytes": 65536,
+    "max_depth": 32,
+    "max_nodes": 5000,
+    "synthetic_records": "1..10; fixture- ID, fictional source_type, fixture:// locator; further native nonempty/referential checks apply",
+    "query": "nonblank 1..200 Unicode characters",
+    "strict_json": "reject nonfinite constants"
+  }
+}

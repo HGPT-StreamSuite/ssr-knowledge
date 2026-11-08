@@ -1,0 +1,5 @@
+{
+  "format": "ssr.knowledge.acceptance.request.v1",
+  "operation": "catalog_check",
+  "input": {"scenario": "pending", "query": "月繩"}
+}
